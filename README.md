@@ -2,8 +2,19 @@
 
 A collection of [Keycloak](https://www.keycloak.org/) SPI providers.
 
-- Keycloak: `26.6.4`
 - Java: `21`
+- Default Keycloak (compile target): `26.7.1` (`keycloak.version` in the root POM)
+
+### Supported Keycloak versions
+
+Providers are developed against Keycloak **26.7.1**. CI recompiles and runs the unit suite against:
+
+- `26.7.1`
+- `26.6.4`
+- `26.5.7`
+- `26.4.7`
+
+Versions outside this set (including other majors) are unsupported unless added to the CI matrix. Override locally with `-Dkeycloak.version=<version>`.
 
 ## Providers
 

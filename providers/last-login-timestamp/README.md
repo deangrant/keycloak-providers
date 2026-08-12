@@ -8,7 +8,8 @@ The provider hooks into Keycloak's event system and, on every successful `LOGIN`
 
 - Provider ID: `last-login-timestamp`
 - Default attribute: `lastLoginTimestamp`
-- Keycloak: `26.6.4`
+- Default Keycloak (compile target): `26.7.1`
+- CI-tested Keycloak: `26.7.1`, `26.6.4`, `26.5.7`, `26.4.7` (see root [README](../../README.md))
 - Java: `21`
 
 ## How it works

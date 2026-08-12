@@ -17,7 +17,7 @@
     </modules>
 
     <properties>
-        <keycloak.version>26.6.4</keycloak.version>
+        <keycloak.version>26.7.1</keycloak.version>
         <junit.version>5.11.4</junit.version>
         <mockito.version>5.14.2</mockito.version>
         <jboss.logging.version>3.6.1.Final</jboss.logging.version>
