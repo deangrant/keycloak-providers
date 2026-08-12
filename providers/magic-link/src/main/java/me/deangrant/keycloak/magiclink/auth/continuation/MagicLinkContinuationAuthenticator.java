@@ -40,6 +40,7 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
   /** Authenticator config key for waiting-session timeout in minutes. */
   public static final String TIMEOUT_MINUTES = "timeoutMinutes";
 
+  /** Default waiting-session timeout in minutes when config is missing or non-positive. */
   public static final int DEFAULT_TIMEOUT_MINUTES = 10;
 
   /** Initial waiting-page poll delay in milliseconds. */

@@ -29,6 +29,7 @@ public final class MagicLinkContinuationActionTokenHandler
 
   private static final Logger LOG = Logger.getLogger(MagicLinkContinuationActionTokenHandler.class);
 
+  /** Creates a handler registered for {@link MagicLinkContinuationActionToken#TOKEN_TYPE}. */
   public MagicLinkContinuationActionTokenHandler() {
     super(
         MagicLinkContinuationActionToken.TOKEN_TYPE,

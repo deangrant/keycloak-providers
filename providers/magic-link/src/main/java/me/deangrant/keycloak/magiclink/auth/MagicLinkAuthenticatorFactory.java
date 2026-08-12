@@ -8,6 +8,7 @@ public final class MagicLinkAuthenticatorFactory extends AbstractMagicLinkAuthen
   /** Keycloak authenticator provider id: {@code magic-link}. */
   public static final String PROVIDER_ID = "magic-link";
 
+  /** Creates the default factory wired to {@link DefaultMagicLinkCustomizationProviderFactory}. */
   public MagicLinkAuthenticatorFactory() {
     super(new DefaultMagicLinkCustomizationProviderFactory());
   }

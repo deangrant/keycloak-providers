@@ -83,11 +83,22 @@ public final class EmailOtpAuthenticator implements Authenticator {
   /** Authenticator config key for max successful OTP emails per authentication session. */
   public static final String MAX_SENDS = "otpMaxSends";
 
+  /** Default OTP lifespan in seconds when config is missing or non-positive. */
   public static final int DEFAULT_TTL_SECONDS = 5 * 60;
+
+  /** Default max wrong guesses allowed per emailed OTP code. */
   public static final int DEFAULT_MAX_ATTEMPTS = 5;
+
+  /** Default minimum seconds between successful OTP emails. */
   public static final int DEFAULT_RESEND_COOLDOWN_SECONDS = 30;
+
+  /** Default max successful OTP emails per authentication session. */
   public static final int DEFAULT_MAX_SENDS = 5;
+
+  /** Number of digits in a generated OTP code. */
   public static final int OTP_LENGTH = 6;
+
+  /** Length of the per-code salt in bytes. */
   public static final int OTP_SALT_BYTES = 16;
 
   private static final String HMAC_SHA256 = "HmacSHA256";

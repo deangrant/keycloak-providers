@@ -48,6 +48,12 @@ public final class MagicLinkSupport {
     return trimmed.isEmpty() ? null : trimmed;
   }
 
+  /**
+   * Returns whether {@code email} is non-null and passes Keycloak email validation.
+   *
+   * @param email candidate address; may be {@code null}
+   * @return {@code true} when the value is a valid email
+   */
   public static boolean isValidEmail(String email) {
     return email != null && Validation.isEmailValid(email);
   }
@@ -91,7 +97,8 @@ public final class MagicLinkSupport {
    * @param session Keycloak session; never {@code null}
    * @param realm realm to search; never {@code null}
    * @param emailOrUsername submitted identity; blank yields a null user result
-   * @param forceCreate when {@code true}, creates an enabled user if none exists
+   * @param forceCreate when {@code true}, creates an enabled user if none exists and the identity
+   *     is a valid email; non-email identities are never created
    * @param updateProfile when creating, adds {@code UPDATE_PROFILE}
    * @param updatePassword when creating, adds {@code UPDATE_PASSWORD}
    * @return result with the user (or {@code null}) and whether that user was newly created
@@ -507,6 +514,12 @@ public final class MagicLinkSupport {
     return client.getClientId();
   }
 
+  /**
+   * Returns the realm display name when set, otherwise the realm name.
+   *
+   * @param realm realm model; never {@code null}
+   * @return non-null label suitable for email templates
+   */
   public static String realmDisplayName(RealmModel realm) {
     if (realm.getDisplayName() != null && !realm.getDisplayName().isBlank()) {
       return realm.getDisplayName();
@@ -514,6 +527,13 @@ public final class MagicLinkSupport {
     return realm.getName();
   }
 
+  /**
+   * Returns the client name when set, otherwise the client id, or empty when {@code client} is
+   * {@code null}.
+   *
+   * @param client client model; may be {@code null}
+   * @return non-null label suitable for email templates
+   */
   public static String clientDisplayName(ClientModel client) {
     if (client == null) {
       return "";

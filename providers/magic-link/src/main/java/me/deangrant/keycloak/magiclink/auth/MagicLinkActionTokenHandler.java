@@ -30,6 +30,7 @@ public final class MagicLinkActionTokenHandler
   /** User-session note key recording that authentication completed via magic link. */
   public static final String LOGIN_METHOD = "login_method";
 
+  /** Creates a handler registered for {@link MagicLinkActionToken#TOKEN_TYPE}. */
   public MagicLinkActionTokenHandler() {
     super(
         MagicLinkActionToken.TOKEN_TYPE,

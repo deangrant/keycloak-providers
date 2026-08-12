@@ -23,6 +23,7 @@ public final class MagicLinkConfig {
   /** Config key: magic-link action-token lifespan in seconds. */
   public static final String TOKEN_LIFESPAN_SECONDS = "tokenLifespanSeconds";
 
+  /** Default magic-link action-token lifespan in seconds when config is missing or non-positive. */
   public static final int DEFAULT_TOKEN_LIFESPAN_SECONDS = 15 * 60;
 
   /** Built-in admin-UI config properties for the magic-link authenticator. */
@@ -90,6 +91,11 @@ public final class MagicLinkConfig {
     this.raw = raw == null ? Map.of() : Map.copyOf(raw);
   }
 
+  /**
+   * Returns an immutable copy of the raw authenticator config map.
+   *
+   * @return non-null config map (empty when no config was supplied)
+   */
   public Map<String, String> raw() {
     return raw;
   }
