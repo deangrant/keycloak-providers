@@ -1,0 +1,327 @@
+package me.deangrant.keycloak.magiclink;
+
+import jakarta.ws.rs.core.UriInfo;
+import java.util.List;
+import java.util.Map;
+import java.util.OptionalInt;
+import me.deangrant.keycloak.magiclink.auth.MagicLinkActionToken;
+import me.deangrant.keycloak.magiclink.auth.continuation.MagicLinkContinuationActionToken;
+import org.jboss.logging.Logger;
+import org.keycloak.authentication.AuthenticationFlowContext;
+import org.keycloak.common.util.Time;
+import org.keycloak.email.EmailException;
+import org.keycloak.email.EmailTemplateProvider;
+import org.keycloak.events.Details;
+import org.keycloak.events.EventBuilder;
+import org.keycloak.events.EventType;
+import org.keycloak.models.ClientModel;
+import org.keycloak.models.Constants;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.RealmModel;
+import org.keycloak.models.UserModel;
+import org.keycloak.models.utils.KeycloakModelUtils;
+import org.keycloak.protocol.oidc.OIDCLoginProtocol;
+import org.keycloak.services.Urls;
+import org.keycloak.services.resources.LoginActionsService;
+import org.keycloak.services.resources.RealmsResource;
+import org.keycloak.services.validation.Validation;
+import org.keycloak.sessions.AuthenticationSessionModel;
+
+/** Shared helpers for magic link and email OTP authenticators. */
+public final class MagicLinkSupport {
+
+  private static final Logger LOG = Logger.getLogger(MagicLinkSupport.class);
+
+  /** {@code Details.REGISTER_METHOD} value when a user is created via magic link. */
+  public static final String REGISTER_METHOD_MAGIC_LINK = "magic-link";
+
+  /** {@code Details.REGISTER_METHOD} value when a user is created via email OTP. */
+  public static final String REGISTER_METHOD_EMAIL_OTP = "email-otp";
+
+  private MagicLinkSupport() {}
+
+  /** Returns {@code null} when {@code value} is {@code null} or blank after trim. */
+  public static String trimToNull(String value) {
+    if (value == null) {
+      return null;
+    }
+    String trimmed = value.trim();
+    return trimmed.isEmpty() ? null : trimmed;
+  }
+
+  public static boolean isValidEmail(String email) {
+    return email != null && Validation.isEmailValid(email);
+  }
+
+  /**
+   * Resolves the email or username already established in the current authentication attempt.
+   *
+   * @param context authentication flow context; never {@code null}
+   * @return attempted identity, or {@code null} if none is available yet
+   */
+  public static String getAttemptedUsername(AuthenticationFlowContext context) {
+    if (context.getUser() != null && context.getUser().getEmail() != null) {
+      return context.getUser().getEmail();
+    }
+    String username =
+        trimToNull(
+            context
+                .getAuthenticationSession()
+                .getAuthNote(
+                    org.keycloak.authentication.authenticators.browser
+                        .AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME));
+    if (username == null) {
+      return null;
+    }
+    if (isValidEmail(username)) {
+      return username;
+    }
+    UserModel user = context.getSession().users().getUserByUsername(context.getRealm(), username);
+    if (user != null && user.getEmail() != null) {
+      return user.getEmail();
+    }
+    return username;
+  }
+
+  /**
+   * Looks up a user by email/username and optionally creates one when missing.
+   *
+   * @param session Keycloak session; never {@code null}
+   * @param realm realm to search; never {@code null}
+   * @param emailOrUsername submitted identity; blank yields {@code null}
+   * @param forceCreate when {@code true}, creates an enabled user if none exists
+   * @param updateProfile when creating, adds {@code UPDATE_PROFILE}
+   * @param updatePassword when creating, adds {@code UPDATE_PASSWORD}
+   * @param event optional event builder for {@code REGISTER}; may be {@code null}
+   * @param registerMethod value written to {@code Details.REGISTER_METHOD} on create
+   * @return existing or newly created user, or {@code null} when missing and create is disabled
+   */
+  public static UserModel getOrCreate(
+      KeycloakSession session,
+      RealmModel realm,
+      String emailOrUsername,
+      boolean forceCreate,
+      boolean updateProfile,
+      boolean updatePassword,
+      EventBuilder event,
+      String registerMethod) {
+    String identity = trimToNull(emailOrUsername);
+    if (identity == null) {
+      return null;
+    }
+
+    UserModel user = KeycloakModelUtils.findUserByNameOrEmail(session, realm, identity);
+    if (user != null || !forceCreate) {
+      return user;
+    }
+
+    user = session.users().addUser(realm, identity);
+    user.setEnabled(true);
+    if (isValidEmail(identity)) {
+      user.setEmail(identity);
+    }
+    if (updatePassword) {
+      user.addRequiredAction(UserModel.RequiredAction.UPDATE_PASSWORD);
+    }
+    if (updateProfile) {
+      user.addRequiredAction(UserModel.RequiredAction.UPDATE_PROFILE);
+    }
+    if (event != null) {
+      event
+          .event(EventType.REGISTER)
+          .detail(Details.REGISTER_METHOD, registerMethod)
+          .detail(Details.USERNAME, user.getUsername())
+          .detail(Details.EMAIL, user.getEmail())
+          .user(user)
+          .success();
+    }
+    return user;
+  }
+
+  /**
+   * Builds a signed magic-link action token from the current authentication session notes.
+   *
+   * @param user authenticated recipient; never {@code null}
+   * @param clientId OIDC client id encoded as {@code azp}; never {@code null}
+   * @param validitySeconds token TTL; empty uses 15 minutes
+   * @param rememberMe whether to honor realm remember-me on redemption
+   * @param authSession current authentication session supplying redirect/OIDC notes; never {@code
+   *     null}
+   * @return new action token ready to serialize
+   */
+  public static MagicLinkActionToken createMagicLinkToken(
+      UserModel user,
+      String clientId,
+      OptionalInt validitySeconds,
+      boolean rememberMe,
+      AuthenticationSessionModel authSession) {
+    int validity = validitySeconds.orElse(15 * 60);
+    int absoluteExpiration = Time.currentTime() + validity;
+    return new MagicLinkActionToken(
+        user.getId(),
+        absoluteExpiration,
+        clientId,
+        authSession.getRedirectUri(),
+        authSession.getClientNote(OIDCLoginProtocol.SCOPE_PARAM),
+        authSession.getClientNote(OIDCLoginProtocol.NONCE_PARAM),
+        authSession.getClientNote(OIDCLoginProtocol.STATE_PARAM),
+        authSession.getClientNote(OIDCLoginProtocol.CODE_CHALLENGE_PARAM),
+        authSession.getClientNote(OIDCLoginProtocol.CODE_CHALLENGE_METHOD_PARAM),
+        rememberMe,
+        authSession.getClientNote(OIDCLoginProtocol.RESPONSE_MODE_PARAM));
+  }
+
+  /**
+   * Builds a continuation action token that identifies the original root session and tab.
+   *
+   * @param user user awaiting confirmation; never {@code null}
+   * @param clientId OIDC client id; never {@code null}
+   * @param validitySeconds token TTL in seconds
+   * @param authSession original-device authentication session; never {@code null}
+   * @return new continuation action token ready to serialize
+   */
+  public static MagicLinkContinuationActionToken createContinuationToken(
+      UserModel user,
+      String clientId,
+      int validitySeconds,
+      AuthenticationSessionModel authSession) {
+    int absoluteExpiration = Time.currentTime() + validitySeconds;
+    String nonce = authSession.getClientNote(OIDCLoginProtocol.NONCE_PARAM);
+    return new MagicLinkContinuationActionToken(
+        user.getId(),
+        absoluteExpiration,
+        clientId,
+        nonce,
+        authSession.getParentSession().getId(),
+        authSession.getTabId(),
+        authSession.getRedirectUri());
+  }
+
+  /**
+   * Serializes {@code token} into a realm login-actions action-token URL.
+   *
+   * @param session Keycloak session used for signing; never {@code null}
+   * @param realm realm whose keys sign the token; never {@code null}
+   * @param token action token to serialize; never {@code null}
+   * @return absolute URL including {@code key} and {@code client_id} query params
+   */
+  public static String linkFromActionToken(
+      KeycloakSession session,
+      RealmModel realm,
+      org.keycloak.authentication.actiontoken.DefaultActionToken token) {
+    UriInfo uriInfo = session.getContext().getUri();
+    RealmModel previous = session.getContext().getRealm();
+    session.getContext().setRealm(realm);
+    try {
+      String serialized = token.serialize(session, realm, uriInfo);
+      return Urls.realmBase(uriInfo.getBaseUri())
+          .path(RealmsResource.class, "getLoginActionsService")
+          .path(LoginActionsService.class, "executeActionToken")
+          .queryParam(Constants.KEY, serialized)
+          .queryParam(Constants.CLIENT_ID, token.getIssuedFor())
+          .build(realm.getName())
+          .toString();
+    } finally {
+      session.getContext().setRealm(previous);
+    }
+  }
+
+  /**
+   * Sends the standard magic-link email template to {@code user}.
+   *
+   * @return {@code true} if Keycloak accepted the message for delivery
+   */
+  public static boolean sendMagicLinkEmail(KeycloakSession session, UserModel user, String link) {
+    return sendTemplatedEmail(
+        session,
+        user,
+        "magicLinkSubject",
+        "magic-link-email.ftl",
+        Map.of(
+            "magicLink", link,
+            "realmName", realmDisplayName(session.getContext().getRealm()),
+            "clientName", clientDisplayName(session.getContext().getClient()),
+            "clientId", session.getContext().getClient().getClientId()));
+  }
+
+  /**
+   * Sends the magic-link continuation email template to {@code user}.
+   *
+   * @return {@code true} if Keycloak accepted the message for delivery
+   */
+  public static boolean sendContinuationEmail(
+      KeycloakSession session, UserModel user, String link) {
+    return sendTemplatedEmail(
+        session,
+        user,
+        "magicLinkContinuationSubject",
+        "magic-link-continuation-email.ftl",
+        Map.of(
+            "magicLink", link,
+            "realmName", realmDisplayName(session.getContext().getRealm()),
+            "clientName", clientDisplayName(session.getContext().getClient()),
+            "clientId", session.getContext().getClient().getClientId()));
+  }
+
+  /**
+   * Sends the email-OTP template containing {@code code}.
+   *
+   * @return {@code true} if Keycloak accepted the message for delivery
+   */
+  public static boolean sendOtpEmail(KeycloakSession session, UserModel user, String code) {
+    return sendTemplatedEmail(
+        session,
+        user,
+        "otpSubject",
+        "email-otp.ftl",
+        Map.of(
+            "code",
+            code,
+            "realmName",
+            realmDisplayName(session.getContext().getRealm()),
+            "clientName",
+            clientDisplayName(session.getContext().getClient())));
+  }
+
+  private static boolean sendTemplatedEmail(
+      KeycloakSession session,
+      UserModel user,
+      String subjectKey,
+      String template,
+      Map<String, Object> bodyAttributes) {
+    RealmModel realm = session.getContext().getRealm();
+    ClientModel client = session.getContext().getClient();
+    try {
+      EmailTemplateProvider email = session.getProvider(EmailTemplateProvider.class);
+      String realmName = realmDisplayName(realm);
+      String clientName = clientDisplayName(client);
+      email
+          .setRealm(realm)
+          .setUser(user)
+          .setAttribute("realmName", realmName)
+          .setAttribute("clientName", clientName)
+          .send(subjectKey, List.of(realmName, clientName), template, bodyAttributes);
+      return true;
+    } catch (EmailException e) {
+      LOG.errorf(e, "Failed to send email template %s", template);
+      return false;
+    }
+  }
+
+  public static String realmDisplayName(RealmModel realm) {
+    if (realm.getDisplayName() != null && !realm.getDisplayName().isBlank()) {
+      return realm.getDisplayName();
+    }
+    return realm.getName();
+  }
+
+  public static String clientDisplayName(ClientModel client) {
+    if (client == null) {
+      return "";
+    }
+    if (client.getName() != null && !client.getName().isBlank()) {
+      return client.getName();
+    }
+    return client.getClientId();
+  }
+}

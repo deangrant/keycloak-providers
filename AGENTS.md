@@ -9,6 +9,7 @@ fuller context, see [README.md](README.md).
 - [DeepWiki](https://deepwiki.com/deangrant/keycloak-providers) — indexed project wiki (architecture, providers, build)
 - [README.md](README.md) — repository layout, Keycloak version matrix, build/test/lint
 - [providers/last-login-timestamp/README.md](providers/last-login-timestamp/README.md) — event-listener architecture, limitations, install/config
+- [providers/magic-link/README.md](providers/magic-link/README.md) — magic link / continuation / email OTP authenticators, themes, SPI extension
 
 ## Rules
 
@@ -23,6 +24,7 @@ fuller context, see [README.md](README.md).
 - [`.agents/skills/keycloak-spi-change/`](.agents/skills/keycloak-spi-change/) — change listener behavior with tests and provider README sync
 - [`.agents/skills/bump-keycloak-matrix/`](.agents/skills/bump-keycloak-matrix/) — keep POM default, CI matrix, and READMEs in sync
 - [`.agents/skills/dependabot-triage/`](.agents/skills/dependabot-triage/) — triage Maven/Actions Dependabot PRs
+- [`.agents/skills/java-javadoc/`](.agents/skills/java-javadoc/) — write JavaDoc compatible with Spotless and Error Prone
 
 ## Commands
 

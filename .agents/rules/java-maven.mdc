@@ -8,6 +8,7 @@ alwaysApply: false
 
 - Target Java 21 (`maven.compiler.release` 21). Do not lower the language level.
 - Format Java with Spotless Google Java Format. After meaningful Java edits, run `mvn -B spotless:apply` before finishing.
+- When adding or changing public/protected Java API docs, follow the `java-javadoc` skill (`.agents/skills/java-javadoc/`).
 - After meaningful code or POM changes, verify with:
   - `mvn -B verify -DskipTests` (Enforcer, Error Prone compile, Spotless check)
   - `mvn -B test` (optionally `-Dkeycloak.version=<version>`)

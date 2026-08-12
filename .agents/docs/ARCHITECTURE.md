@@ -52,16 +52,19 @@ profiles for Keycloak versions; the single override point is the root property
 | Module | Artifact | SPI | Role |
 | ------ | -------- | --- | ---- |
 | `providers/last-login-timestamp` | `last-login-timestamp` | `eventsListener` | Record last successful `LOGIN` as a user attribute |
+| `providers/magic-link` | `magic-link` | `authenticator`, `actionTokenHandler` | Magic Link, Magic Link Continuation, Email OTP |
 
 Keycloak artifacts (`keycloak-server-spi`, `keycloak-server-spi-private`,
-`keycloak-core`) and JBoss Logging are **`provided`**. Override the compile/test
-Keycloak version with `-Dkeycloak.version=<version>`.
+`keycloak-core`, and for authenticators `keycloak-services`) and JBoss Logging are
+**`provided`**. Override the compile/test Keycloak version with
+`-Dkeycloak.version=<version>`.
 
 ```mermaid
 flowchart TB
   RootPom[RootAggregatorPOM] --> LastLogin[providers_last-login-timestamp]
+  RootPom --> MagicLink[providers_magic-link]
   LastLogin --> Jar[last-login-timestamp.jar]
-  LastLogin --> Services[META-INF_services_EventListenerProviderFactory]
+  MagicLink --> MagicJar[magic-link.jar]
 ```
 
 ## Provider map (last-login-timestamp)
@@ -130,6 +133,28 @@ flowchart TD
 Federated users in READ_ONLY (or similar) storage may never receive the
 attribute. The attribute may appear shortly after the login HTTP response
 returns. See the provider README Limitations section for operator detail.
+
+## Provider map (magic-link)
+
+| Type | Path | Role |
+| ---- | ---- | ---- |
+| Authenticator | `MagicLinkAuthenticator` | Email form → action token email → cross-device login |
+| Continuation | `MagicLinkContinuationAuthenticator` | Original device polls until link confirms session |
+| Email OTP | `EmailOtpAuthenticator` | 6-digit emailed OTP after user identification |
+| Customization SPI | `MagicLinkCustomizationProvider` + `AbstractMagicLinkAuthenticatorFactory` | Library extension points |
+| Registration | `META-INF/services/...AuthenticatorFactory` and `...ActionTokenHandlerFactory` | `ServiceLoader` entries |
+
+```mermaid
+flowchart LR
+  Browser[BrowserFlow] --> MagicAuth[MagicLink]
+  Browser --> ContAuth[Continuation]
+  Browser --> OtpAuth[EmailOTP]
+  MagicAuth --> TokenHandler[ActionTokenHandler]
+  ContAuth --> Confirm[ConfirmOriginalSession]
+```
+
+See [providers/magic-link/README.md](../../providers/magic-link/README.md) for
+install, flow setup, templates, and SPI extension.
 
 ## Verification and agent layout
 
