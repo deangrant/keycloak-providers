@@ -15,8 +15,12 @@ import org.keycloak.provider.Provider;
 public interface MagicLinkCustomizationProvider extends Provider {
 
   /**
-   * Returns {@code false} (after setting a challenge/failure on {@code context}) to abort sending a
-   * magic link.
+   * Returns {@code false} to abort sending a magic link.
+   *
+   * <p>When this method returns {@code false}, the authenticator presents the generic waiting page
+   * (anti-enumeration) and does not send mail. Implementations may log or emit events, but should
+   * not rely on setting their own challenge or failure for deny UX—the authenticator owns the
+   * response.
    *
    * @param context current authentication flow context; never {@code null}
    * @param user resolved user about to receive a magic link; never {@code null}

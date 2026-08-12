@@ -163,6 +163,9 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
       if (created.created()) {
         MagicLinkSupport.removeUser(context.getSession(), context.getRealm(), user);
       }
+      // Avoid enumeration / stall: same waiting page as unknown email (no mail).
+      beginWaitingSession(context, email);
+      context.forceChallenge(context.form().createForm("view-email-continuation.ftl"));
       return;
     }
 

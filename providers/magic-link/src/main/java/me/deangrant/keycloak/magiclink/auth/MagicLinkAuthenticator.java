@@ -93,6 +93,11 @@ public final class MagicLinkAuthenticator extends UsernamePasswordForm {
       if (created.created()) {
         MagicLinkSupport.removeUser(context.getSession(), context.getRealm(), user);
       }
+      // Avoid enumeration / stall: same waiting page as unknown email (no mail).
+      context
+          .getAuthenticationSession()
+          .setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, email);
+      context.forceChallenge(context.form().createForm("view-email.ftl"));
       return;
     }
 
@@ -104,6 +109,11 @@ public final class MagicLinkAuthenticator extends UsernamePasswordForm {
         if (created.created()) {
           MagicLinkSupport.removeUser(context.getSession(), context.getRealm(), user);
         }
+        // Avoid enumeration / stall: authenticator owns the waiting-page challenge.
+        context
+            .getAuthenticationSession()
+            .setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, email);
+        context.forceChallenge(context.form().createForm("view-email.ftl"));
         return;
       }
 

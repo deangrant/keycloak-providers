@@ -97,6 +97,7 @@ Depend on this module from another Keycloak extension:
 - When SMTP fails for a **known** user, Magic Link / Continuation / Email OTP show an email-send error so the user can retry; the waiting or continuation session is not started. Unknown emails still get the generic waiting page (anti-enumeration).
 - Magic Link / Continuation action tokens are single-use.
 - Magic Link and Continuation show the same waiting page for unknown emails (no mail sent) to avoid account enumeration.
+- Magic Link and Continuation also show that waiting page when the user is disabled or temporarily locked (BFD), and Magic Link does the same when customization denies auth—no mail is sent and the flow never stalls without a challenge.
 - With `forceCreate`, a user may be created before the email is sent (action tokens need a user id); if the send fails (or customization denies auth), that newly created user is removed and `REGISTER` is emitted only after a successful send.
 - Continuation confirmation depends on the original authentication session still being alive in the cluster.
 - Email OTP stores a SHA-256 hash of the code in the authentication session (not the plaintext code).

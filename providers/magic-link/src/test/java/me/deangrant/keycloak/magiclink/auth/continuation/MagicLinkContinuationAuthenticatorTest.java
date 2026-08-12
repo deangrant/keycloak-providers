@@ -131,6 +131,51 @@ class MagicLinkContinuationAuthenticatorTest {
   }
 
   @Test
+  void disabledUserUsesContinuationWaitingTemplate() {
+    MagicLinkContinuationAuthenticator authenticator = new MagicLinkContinuationAuthenticator();
+    when(context.getAuthenticationSession()).thenReturn(authSession);
+    when(context.getSession()).thenReturn(session);
+    when(context.getRealm()).thenReturn(realm);
+    when(context.getHttpRequest()).thenReturn(httpRequest);
+    when(context.getEvent()).thenReturn(event);
+    when(context.newEvent()).thenReturn(newEvent);
+    when(context.form()).thenReturn(forms);
+    when(context.getAuthenticatorConfig()).thenReturn(null);
+    when(context.getProtector()).thenReturn(protector);
+    when(context.getExecution()).thenReturn(execution);
+    when(execution.getId()).thenReturn("exec-1");
+    when(authSession.getAuthNote(ContinuationNotes.SESSION_EXPIRATION)).thenReturn(null);
+    when(authSession.getAuthNote(ContinuationNotes.SESSION_CONFIRMED)).thenReturn(null);
+    when(session.users()).thenReturn(users);
+    when(realm.isLoginWithEmailAllowed()).thenReturn(true);
+    when(realm.isBruteForceProtected()).thenReturn(false);
+    when(users.getUserByEmail(realm, "disabled@example.com")).thenReturn(user);
+    when(user.getEmail()).thenReturn("disabled@example.com");
+    when(user.isEnabled()).thenReturn(false);
+    when(event.detail(any(), org.mockito.ArgumentMatchers.<String>any())).thenReturn(event);
+    when(event.event(any())).thenReturn(event);
+    when(forms.createForm("view-email-continuation.ftl")).thenReturn(formResponse);
+    when(forms.setExecution(any())).thenReturn(forms);
+    when(forms.setError(any(), any())).thenReturn(forms);
+    when(forms.setError(any())).thenReturn(forms);
+    when(forms.addError(any())).thenReturn(forms);
+
+    MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
+    form.add(AuthenticationManager.FORM_USERNAME, "disabled@example.com");
+    when(httpRequest.getDecodedFormParameters()).thenReturn(form);
+
+    authenticator.action(context);
+
+    verify(authSession)
+        .setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, "disabled@example.com");
+    verify(authSession).setAuthNote(ContinuationNotes.SESSION_INITIATED, "true");
+    verify(authSession).setAuthNote(eq(ContinuationNotes.SESSION_EXPIRATION), any());
+    verify(forms).createForm("view-email-continuation.ftl");
+    verify(forms, never()).createForm("view-email.ftl");
+    verify(context).forceChallenge(formResponse);
+  }
+
+  @Test
   void smtpFailureDoesNotInitiateContinuationWaiting() {
     MagicLinkContinuationAuthenticator authenticator = new MagicLinkContinuationAuthenticator();
     when(context.getAuthenticationSession()).thenReturn(authSession);

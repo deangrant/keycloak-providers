@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.keycloak.authentication.AuthenticationFlowContext;
 import org.keycloak.authentication.AuthenticationFlowError;
+import org.keycloak.authentication.authenticators.browser.AbstractUsernameFormAuthenticator;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
@@ -116,6 +117,29 @@ class MagicLinkAuthenticatorTest {
   }
 
   @Test
+  void disabledUserUsesWaitingTemplateToAvoidEnumeration() {
+    when(context.getAuthenticatorConfig()).thenReturn(null);
+    when(users.getUserByEmail(realm, "disabled@example.com")).thenReturn(existingUser);
+    when(existingUser.getEmail()).thenReturn("disabled@example.com");
+    when(existingUser.isEnabled()).thenReturn(false);
+
+    MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
+    form.add(AuthenticationManager.FORM_USERNAME, "disabled@example.com");
+    when(httpRequest.getDecodedFormParameters()).thenReturn(form);
+
+    MagicLinkAuthenticator authenticator =
+        new MagicLinkAuthenticator((s, config) -> new DefaultAllowProvider());
+    authenticator.action(context);
+
+    verify(authSession)
+        .setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, "disabled@example.com");
+    verify(forms).createForm("view-email.ftl");
+    // enabledUser challenges first; authenticator overlays the waiting page.
+    verify(context, org.mockito.Mockito.atLeastOnce()).forceChallenge(formResponse);
+    verify(context, never()).challenge(any());
+  }
+
+  @Test
   void forceCreateRollbackWhenCustomizationDenies() {
     when(context.getAuthenticatorConfig()).thenReturn(authenticatorConfig);
     when(authenticatorConfig.getConfig()).thenReturn(Map.of(MagicLinkConfig.FORCE_CREATE, "true"));
@@ -153,8 +177,11 @@ class MagicLinkAuthenticatorTest {
 
     verify(users).addUser(realm, "new@example.com");
     verify(users).removeUser(realm, createdUser);
+    verify(authSession)
+        .setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, "new@example.com");
+    verify(forms).createForm("view-email.ftl");
+    verify(context).forceChallenge(formResponse);
     verify(context, never()).challenge(any());
-    verify(context, never()).forceChallenge(any());
   }
 
   @Test
