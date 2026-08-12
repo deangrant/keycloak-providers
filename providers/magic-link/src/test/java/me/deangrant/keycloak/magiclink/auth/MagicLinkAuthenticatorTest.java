@@ -118,6 +118,27 @@ class MagicLinkAuthenticatorTest {
   }
 
   @Test
+  void missingClientFailureChallengesWithoutSending() {
+    when(context.getAuthenticatorConfig()).thenReturn(null);
+    when(keycloakContext.getClient()).thenReturn(null);
+    when(authSession.getClient()).thenReturn(null);
+
+    MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
+    form.add(AuthenticationManager.FORM_USERNAME, "alice@example.com");
+    when(httpRequest.getDecodedFormParameters()).thenReturn(form);
+
+    MagicLinkAuthenticator authenticator =
+        new MagicLinkAuthenticator((s, config) -> new DefaultAllowProvider());
+    authenticator.action(context);
+
+    verify(event).error(Errors.CLIENT_NOT_FOUND);
+    verify(context)
+        .failureChallenge(
+            eq(AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR), eq(formResponse));
+    verify(users, never()).getUserByEmail(any(), any());
+  }
+
+  @Test
   void disabledUserUsesWaitingTemplateToAvoidEnumeration() {
     when(context.getAuthenticatorConfig()).thenReturn(null);
     when(users.getUserByEmail(realm, "disabled@example.com")).thenReturn(existingUser);

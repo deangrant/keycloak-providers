@@ -81,11 +81,21 @@ public final class MagicLinkContinuationActionTokenHandler
     }
 
     KeycloakSession session = tokenContext.getSession();
-    ClientModel client = authSession.getClient();
+    ClientModel client =
+        MagicLinkSupport.resolveClient(
+            session, tokenContext.getRealm(), authSession, token.getIssuedFor());
     AuthenticationSessionProvider provider = session.authenticationSessions();
     RootAuthenticationSessionModel root =
         provider.getRootAuthenticationSession(tokenContext.getRealm(), token.getSessionId());
     LoginFormsProvider forms = session.getProvider(LoginFormsProvider.class);
+
+    if (client == null) {
+      LOG.warnf(
+          "Continuation handler missing client for user %s issuedFor %s",
+          token.getUserId(), token.getIssuedFor());
+      tokenContext.getEvent().error(Errors.CLIENT_NOT_FOUND);
+      return forms.setActionUri(URI.create("#")).createForm("email-confirmation-error.ftl");
+    }
 
     if (root != null) {
       AuthenticationSessionModel original = root.getAuthenticationSession(client, token.getTabId());

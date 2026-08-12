@@ -16,6 +16,7 @@ import org.keycloak.models.UserModel;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.utils.OIDCResponseMode;
 import org.keycloak.protocol.oidc.utils.RedirectUtils;
+import org.keycloak.services.ErrorPage;
 import org.keycloak.services.managers.AuthenticationManager;
 import org.keycloak.services.messages.Messages;
 import org.keycloak.services.util.ResolveRelative;
@@ -69,7 +70,20 @@ public final class MagicLinkActionTokenHandler
 
     AuthenticationSessionModel authSession = tokenContext.getAuthenticationSession();
     UserModel user = authSession.getAuthenticatedUser();
-    ClientModel client = authSession.getClient();
+    ClientModel client =
+        MagicLinkSupport.resolveClient(
+            tokenContext.getSession(), tokenContext.getRealm(), authSession, token.getIssuedFor());
+    if (client == null) {
+      LOG.warnf(
+          "Magic link handler missing client for user %s issuedFor %s",
+          token.getUserId(), token.getIssuedFor());
+      tokenContext.getEvent().error(Errors.CLIENT_NOT_FOUND);
+      return ErrorPage.error(
+          tokenContext.getSession(),
+          authSession,
+          Response.Status.BAD_REQUEST,
+          Messages.INVALID_REQUEST);
+    }
 
     String redirectUri =
         token.getRedirectUri() != null

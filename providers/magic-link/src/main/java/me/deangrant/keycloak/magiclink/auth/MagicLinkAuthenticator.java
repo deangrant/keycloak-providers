@@ -15,6 +15,7 @@ import org.keycloak.authentication.authenticators.browser.UsernamePasswordForm;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventType;
 import org.keycloak.forms.login.LoginFormsProvider;
+import org.keycloak.models.ClientModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.services.managers.AuthenticationManager;
 import org.keycloak.services.messages.Messages;
@@ -61,7 +62,17 @@ public final class MagicLinkAuthenticator extends UsernamePasswordForm {
     }
 
     MagicLinkConfig config = new MagicLinkConfig(context.getAuthenticatorConfig());
-    String clientId = context.getSession().getContext().getClient().getClientId();
+    ClientModel client =
+        MagicLinkSupport.resolveClient(context.getSession(), context.getAuthenticationSession());
+    if (client == null) {
+      context.getEvent().error(Errors.CLIENT_NOT_FOUND);
+      Response challengeResponse =
+          challenge(context, getDefaultChallengeMessage(context), FIELD_USERNAME);
+      context.failureChallenge(
+          AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR, challengeResponse);
+      return;
+    }
+    String clientId = client.getClientId();
 
     MagicLinkSupport.GetOrCreateResult created =
         MagicLinkSupport.getOrCreate(

@@ -1,6 +1,7 @@
 package me.deangrant.keycloak.magiclink;
 
 import jakarta.ws.rs.core.UriInfo;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
@@ -390,16 +391,13 @@ public final class MagicLinkSupport {
    * @return {@code true} if Keycloak accepted the message for delivery
    */
   public static boolean sendMagicLinkEmail(KeycloakSession session, UserModel user, String link) {
-    return sendTemplatedEmail(
-        session,
-        user,
-        "magicLinkSubject",
-        "magic-link-email.ftl",
-        Map.of(
-            "magicLink", link,
-            "realmName", realmDisplayName(session.getContext().getRealm()),
-            "clientName", clientDisplayName(session.getContext().getClient()),
-            "clientId", session.getContext().getClient().getClientId()));
+    ClientModel client = resolveClient(session, null);
+    Map<String, Object> attrs = new HashMap<>();
+    attrs.put("magicLink", link);
+    attrs.put("realmName", realmDisplayName(session.getContext().getRealm()));
+    attrs.put("clientName", clientDisplayName(client));
+    attrs.put("clientId", clientId(client));
+    return sendTemplatedEmail(session, user, "magicLinkSubject", "magic-link-email.ftl", attrs);
   }
 
   /**
@@ -409,16 +407,14 @@ public final class MagicLinkSupport {
    */
   public static boolean sendContinuationEmail(
       KeycloakSession session, UserModel user, String link) {
+    ClientModel client = resolveClient(session, null);
+    Map<String, Object> attrs = new HashMap<>();
+    attrs.put("magicLink", link);
+    attrs.put("realmName", realmDisplayName(session.getContext().getRealm()));
+    attrs.put("clientName", clientDisplayName(client));
+    attrs.put("clientId", clientId(client));
     return sendTemplatedEmail(
-        session,
-        user,
-        "magicLinkContinuationSubject",
-        "magic-link-continuation-email.ftl",
-        Map.of(
-            "magicLink", link,
-            "realmName", realmDisplayName(session.getContext().getRealm()),
-            "clientName", clientDisplayName(session.getContext().getClient()),
-            "clientId", session.getContext().getClient().getClientId()));
+        session, user, "magicLinkContinuationSubject", "magic-link-continuation-email.ftl", attrs);
   }
 
   /**
@@ -427,18 +423,12 @@ public final class MagicLinkSupport {
    * @return {@code true} if Keycloak accepted the message for delivery
    */
   public static boolean sendOtpEmail(KeycloakSession session, UserModel user, String code) {
-    return sendTemplatedEmail(
-        session,
-        user,
-        "otpSubject",
-        "email-otp.ftl",
-        Map.of(
-            "code",
-            code,
-            "realmName",
-            realmDisplayName(session.getContext().getRealm()),
-            "clientName",
-            clientDisplayName(session.getContext().getClient())));
+    ClientModel client = resolveClient(session, null);
+    Map<String, Object> attrs = new HashMap<>();
+    attrs.put("code", code);
+    attrs.put("realmName", realmDisplayName(session.getContext().getRealm()));
+    attrs.put("clientName", clientDisplayName(client));
+    return sendTemplatedEmail(session, user, "otpSubject", "email-otp.ftl", attrs);
   }
 
   private static boolean sendTemplatedEmail(
@@ -448,7 +438,7 @@ public final class MagicLinkSupport {
       String template,
       Map<String, Object> bodyAttributes) {
     RealmModel realm = session.getContext().getRealm();
-    ClientModel client = session.getContext().getClient();
+    ClientModel client = resolveClient(session, null);
     try {
       EmailTemplateProvider email = session.getProvider(EmailTemplateProvider.class);
       String realmName = realmDisplayName(realm);
@@ -466,6 +456,63 @@ public final class MagicLinkSupport {
     }
   }
 
+  /**
+   * Resolves the active client from the authentication session, falling back to the Keycloak
+   * context client.
+   *
+   * @param session Keycloak session; never {@code null}
+   * @param authSession current authentication session; may be {@code null}
+   * @return resolved client, or {@code null} when neither source has one
+   */
+  public static ClientModel resolveClient(
+      KeycloakSession session, AuthenticationSessionModel authSession) {
+    if (authSession != null && authSession.getClient() != null) {
+      return authSession.getClient();
+    }
+    if (session != null && session.getContext() != null) {
+      return session.getContext().getClient();
+    }
+    return null;
+  }
+
+  /**
+   * Resolves a client for action-token handling: auth session, then context, then lookup by {@code
+   * issuedFor}.
+   *
+   * @param session Keycloak session; never {@code null}
+   * @param realm realm used for client lookup; never {@code null}
+   * @param authSession current authentication session; may be {@code null}
+   * @param issuedFor client id from the action token ({@code azp}); may be {@code null}
+   * @return resolved client, or {@code null} when none can be found
+   */
+  public static ClientModel resolveClient(
+      KeycloakSession session,
+      RealmModel realm,
+      AuthenticationSessionModel authSession,
+      String issuedFor) {
+    ClientModel client = resolveClient(session, authSession);
+    if (client != null) {
+      return client;
+    }
+    if (session == null || realm == null || issuedFor == null || issuedFor.isBlank()) {
+      return null;
+    }
+    return session.clients().getClientByClientId(realm, issuedFor);
+  }
+
+  /**
+   * Returns the client id, or an empty string when {@code client} is {@code null}.
+   *
+   * @param client client model; may be {@code null}
+   * @return non-null client id string suitable for templates
+   */
+  public static String clientId(ClientModel client) {
+    if (client == null || client.getClientId() == null) {
+      return "";
+    }
+    return client.getClientId();
+  }
+
   public static String realmDisplayName(RealmModel realm) {
     if (realm.getDisplayName() != null && !realm.getDisplayName().isBlank()) {
       return realm.getDisplayName();
@@ -480,6 +527,6 @@ public final class MagicLinkSupport {
     if (client.getName() != null && !client.getName().isBlank()) {
       return client.getName();
     }
-    return client.getClientId();
+    return clientId(client);
   }
 }

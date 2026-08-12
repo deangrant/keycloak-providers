@@ -16,10 +16,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.keycloak.TokenVerifier;
 import org.keycloak.authentication.actiontoken.ActionTokenContext;
+import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.forms.login.LoginFormsProvider;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientProvider;
+import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.SingleUseObjectProvider;
@@ -51,6 +53,7 @@ class MagicLinkContinuationActionTokenHandlerTest {
   @Mock private UserModel user;
   @Mock private LoginFormsProvider forms;
   @Mock private EventBuilder event;
+  @Mock private KeycloakContext keycloakContext;
   @Mock private Response confirmationResponse;
   @Mock private Response errorResponse;
 
@@ -65,6 +68,7 @@ class MagicLinkContinuationActionTokenHandlerTest {
     when(tokenContext.getAuthenticationSession()).thenReturn(authSession);
     when(session.authenticationSessions()).thenReturn(authSessions);
     when(session.clients()).thenReturn(clients);
+    when(session.getContext()).thenReturn(keycloakContext);
     when(session.getProvider(LoginFormsProvider.class)).thenReturn(forms);
     when(authSession.getClient()).thenReturn(client);
     when(authSession.getAuthenticatedUser()).thenReturn(user);
@@ -127,6 +131,36 @@ class MagicLinkContinuationActionTokenHandlerTest {
     verify(event).error("Expired magic link continuation session");
     verify(forms).createForm("email-confirmation-error.ftl");
     verify(forms, never()).createForm("email-confirmation.ftl");
+  }
+
+  @Test
+  void handleTokenShowsErrorWhenClientMissing() {
+    when(authSession.getClient()).thenReturn(null);
+    when(keycloakContext.getClient()).thenReturn(null);
+    when(clients.getClientByClientId(realm, "account")).thenReturn(null);
+    when(forms.createForm("email-confirmation-error.ftl")).thenReturn(errorResponse);
+
+    Response response = handler.handleToken(token, tokenContext);
+
+    assertSame(errorResponse, response);
+    verify(event).error(Errors.CLIENT_NOT_FOUND);
+    verify(forms, never()).createForm("email-confirmation.ftl");
+  }
+
+  @Test
+  void handleTokenRecoversClientFromIssuedFor() {
+    when(authSession.getClient()).thenReturn(null);
+    when(keycloakContext.getClient()).thenReturn(null);
+    when(clients.getClientByClientId(realm, "account")).thenReturn(client);
+    when(authSessions.getRootAuthenticationSession(realm, "root-session")).thenReturn(root);
+    when(root.getAuthenticationSession(client, "tab-1")).thenReturn(originalSession);
+    when(forms.createForm("email-confirmation.ftl")).thenReturn(confirmationResponse);
+
+    Response response = handler.handleToken(token, tokenContext);
+
+    assertSame(confirmationResponse, response);
+    verify(originalSession).setAuthNote(ContinuationNotes.SESSION_CONFIRMED, "true");
+    verify(event).success();
   }
 
   @Test

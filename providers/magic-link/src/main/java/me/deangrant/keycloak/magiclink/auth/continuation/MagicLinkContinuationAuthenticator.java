@@ -21,6 +21,7 @@ import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
 import org.keycloak.forms.login.LoginFormsProvider;
 import org.keycloak.models.AuthenticatorConfigModel;
+import org.keycloak.models.ClientModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.provider.ProviderConfigProperty;
@@ -173,7 +174,17 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
 
     int timeoutMinutes = getTimeoutMinutes(context);
     int validitySeconds = 60 * timeoutMinutes;
-    String clientId = context.getSession().getContext().getClient().getClientId();
+    ClientModel client =
+        MagicLinkSupport.resolveClient(context.getSession(), context.getAuthenticationSession());
+    if (client == null) {
+      context.getEvent().error(Errors.CLIENT_NOT_FOUND);
+      Response challengeResponse =
+          challenge(context, getDefaultChallengeMessage(context), FIELD_USERNAME);
+      context.failureChallenge(
+          AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR, challengeResponse);
+      return;
+    }
+    String clientId = client.getClientId();
     MagicLinkContinuationActionToken token =
         MagicLinkSupport.createContinuationToken(
             user, clientId, validitySeconds, context.getAuthenticationSession());
