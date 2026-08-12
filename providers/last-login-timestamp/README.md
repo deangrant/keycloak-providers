@@ -14,8 +14,7 @@ The provider hooks into Keycloak's event system and, on every successful `LOGIN`
 ## How it works
 
 - Listens for `EventType.LOGIN` and queues each event on a deferred `AbstractKeycloakTransaction` enlisted with `enlistAfterCompletion`.
-- After the login transaction commits, the queued event is processed in a fresh session/transaction created via public Keycloak session APIs.
-- An unlocked optimistic read skips the write entirely when the stored timestamp is already current. Only when an update may be needed is a per-user lock taken to serialize the read-compare-write on a single node, so the stored value is only replaced when it is missing, invalid, or strictly older than the new login time (monotonic per node). Unrelated users never contend for the same lock.
+- After the login transaction commits, one fresh session/transaction under a per-user lock performs read-compare-write via public Keycloak session APIs. The write is skipped when the stored timestamp is already equal to or newer than the event time (monotonic per node). Unrelated users never contend for the same lock.
 - Failures are caught and logged at `WARN` on the `org.keycloak.events` logger using Keycloak's native `key="value"` format. Only non-sensitive detail keys are logged; `sessionId` and `ipAddress` are omitted.
 
 ### Limitations

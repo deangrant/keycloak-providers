@@ -26,11 +26,10 @@ import org.keycloak.utils.StringUtil;
  * On {@link EventType#LOGIN}, queues the event and writes the event time
  * (milliseconds since epoch) to the user attribute configured by
  * {@link LastLoginTimestampListenerFactory} after the login transaction
- * commits, in a separate transaction. An unlocked optimistic read skips the
- * write entirely when the stored value is already current; only when an update
- * may be needed does a per-user lock serialize the read-compare-write on that
- * node, so only missing, invalid, or strictly older stored values are replaced
- * for concurrent logins of the same user on that server.
+ * commits, in a separate transaction. A per-user lock serializes the
+ * read-compare-write on that node so only missing, invalid, or strictly older
+ * stored values are replaced for concurrent logins of the same user on that
+ * server.
  *
  * This is a best-effort side effect. In a multi-node deployment, concurrent
  * logins routed to different nodes may still race at the database layer.
@@ -90,15 +89,13 @@ public class LastLoginTimestampListener implements EventListenerProvider {
     /**
      * Persists the last-login timestamp after the login transaction commits.
      *
-     * Performs an unlocked optimistic read first and returns without locking
-     * when the stored value is already equal to or newer than the event time
-     * (the common case). Only when an update may be needed does it acquire a
-     * per-user lock and re-run the read-compare-write in a fresh transaction,
-     * so unrelated users never contend and same-user writes stay serialized on
-     * this node. Runs in a separate transaction so write failures cannot roll
-     * back authentication. Cross-node monotonicity is not guaranteed; concurrent
-     * logins on different Keycloak nodes may still commit out of order at the
-     * database.
+     * Acquires a per-user lock and performs read-compare-write in a single fresh
+     * transaction so unrelated users never contend, same-user writes stay
+     * serialized on this node, and write failures cannot roll back
+     * authentication. The stored value is replaced only when it is missing,
+     * invalid, or strictly older than the event time. Cross-node monotonicity
+     * is not guaranteed; concurrent logins on different Keycloak nodes may
+     * still commit out of order at the database.
      *
      * @param event the queued login event
      */
@@ -108,11 +105,6 @@ public class LastLoginTimestampListener implements EventListenerProvider {
         long newTimestamp = event.getTime();
 
         try {
-            if (!isMissingOrOlder(readCurrentTimestamp(realmId, userId), newTimestamp)) {
-                return;
-            }
-            // Only serialize when a write may be needed. The re-read inside the
-            // lock guards against another thread having written a newer value.
             synchronized (userLock(realmId, userId)) {
                 runInTransaction(session.getKeycloakSessionFactory(), s -> {
                     RealmModel realm = s.realms().getRealm(realmId);
@@ -131,29 +123,6 @@ public class LastLoginTimestampListener implements EventListenerProvider {
         } catch (Exception e) {
             LOG.warn(formatEventWithError(event, e), e);
         }
-    }
-
-    /**
-     * Reads the current stored timestamp attribute in an unlocked transaction.
-     *
-     * @param realmId the realm identifier
-     * @param userId  the user identifier
-     * @return the stored attribute value, or {@code null} if the realm, user,
-     *         or attribute is absent
-     */
-    private String readCurrentTimestamp(String realmId, String userId) {
-        String[] current = new String[1];
-        runInTransaction(session.getKeycloakSessionFactory(), s -> {
-            RealmModel realm = s.realms().getRealm(realmId);
-            if (realm == null) {
-                return;
-            }
-            UserModel user = s.users().getUserById(realm, userId);
-            if (user != null) {
-                current[0] = user.getFirstAttribute(attributeName);
-            }
-        });
-        return current[0];
     }
 
     /**
