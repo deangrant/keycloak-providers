@@ -4,7 +4,7 @@ A [Keycloak](https://www.keycloak.org/) event listener that records each user's 
 
 ## Overview
 
-The provider hooks into Keycloak's event system and, on every successful `LOGIN` event, writes the login time to a user attribute (default: `lastLoginTimestamp`). The write is scheduled asynchronously after the login commits, so it never blocks or rolls back authentication.
+The provider hooks into Keycloak's event system and, on every successful `LOGIN` event, writes the login time to a user attribute (default: `lastLoginTimestamp`). The attribute is an **advisory** last-login signal for operational display and similar uses—not a canonical audit trail. The write is scheduled asynchronously after the login commits, so it never blocks or rolls back authentication.
 
 - Provider ID: `last-login-timestamp`
 - Default attribute: `lastLoginTimestamp`
@@ -19,7 +19,7 @@ The provider hooks into Keycloak's event system and, on every successful `LOGIN`
 
 ### Limitations
 
-- Updates are best-effort and monotonic **per Keycloak node**, not cluster-wide. In a multi-node deployment, concurrent logins routed to different nodes may still race at the database layer.
+- Updates are best-effort and monotonic **per Keycloak node**, not cluster-wide. In a multi-node deployment, concurrent logins routed to different nodes may still race at the database layer. That cluster non-monotonicity is accepted for this advisory last-login signal.
 - The attribute may appear shortly after the login response returns; do not assume it is visible before the client receives the response.
 - Do not rely on this attribute alone for audit or compliance. Use Keycloak event logs or a dedicated audit store if canonical login history is required.
 - The Keycloak `eventsListener` SPI is internal and may change; this provider uses that SPI contract but avoids private Keycloak helper utilities beyond it.
