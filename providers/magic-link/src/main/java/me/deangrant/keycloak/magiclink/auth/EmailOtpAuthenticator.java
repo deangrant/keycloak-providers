@@ -3,12 +3,15 @@ package me.deangrant.keycloak.magiclink.auth;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import me.deangrant.keycloak.magiclink.MagicLinkSupport;
 import org.jboss.logging.Logger;
 import org.keycloak.authentication.AuthenticationFlowContext;
@@ -39,8 +42,11 @@ public final class EmailOtpAuthenticator implements Authenticator {
 
   private static final Logger LOG = Logger.getLogger(EmailOtpAuthenticator.class);
 
-  /** Auth-session note storing the SHA-256 hex digest of the emailed OTP. */
+  /** Auth-session note storing the HMAC-SHA256 hex digest of the emailed OTP. */
   public static final String AUTH_NOTE_OTP_HASH = "email-otp-hash";
+
+  /** Auth-session note storing the per-code salt (hex) used with {@link #AUTH_NOTE_OTP_HASH}. */
+  public static final String AUTH_NOTE_OTP_SALT = "email-otp-salt";
 
   /** Auth-session note storing the OTP expiry as epoch seconds. */
   public static final String AUTH_NOTE_OTP_EXPIRY = "email-otp-expiry";
@@ -60,6 +66,9 @@ public final class EmailOtpAuthenticator implements Authenticator {
   public static final int DEFAULT_TTL_SECONDS = 5 * 60;
   public static final int DEFAULT_MAX_ATTEMPTS = 5;
   public static final int OTP_LENGTH = 6;
+  public static final int OTP_SALT_BYTES = 16;
+
+  private static final String HMAC_SHA256 = "HmacSHA256";
 
   /** Admin-UI config properties for this authenticator. */
   public static final List<ProviderConfigProperty> CONFIG_PROPERTIES;
@@ -133,9 +142,10 @@ public final class EmailOtpAuthenticator implements Authenticator {
 
     String code = MagicLinkSupport.trimToNull(formData.getFirst(FORM_PARAM_OTP));
     String expectedHash = context.getAuthenticationSession().getAuthNote(AUTH_NOTE_OTP_HASH);
+    String saltHex = context.getAuthenticationSession().getAuthNote(AUTH_NOTE_OTP_SALT);
     String expiryRaw = context.getAuthenticationSession().getAuthNote(AUTH_NOTE_OTP_EXPIRY);
 
-    if (expectedHash == null || expiryRaw == null) {
+    if (expectedHash == null || saltHex == null || expiryRaw == null) {
       context
           .getEvent()
           .user(context.getUser())
@@ -167,10 +177,7 @@ public final class EmailOtpAuthenticator implements Authenticator {
       return;
     }
 
-    if (code != null
-        && MessageDigest.isEqual(
-            hash(code).getBytes(StandardCharsets.UTF_8),
-            expectedHash.getBytes(StandardCharsets.UTF_8))) {
+    if (otpMatches(code, saltHex, expectedHash)) {
       clearOtpNotes(context);
       if (context.getAuthenticationSession().getAuthenticatedUser() != null) {
         context.getAuthenticationSession().getAuthenticatedUser().setEmailVerified(true);
@@ -255,7 +262,9 @@ public final class EmailOtpAuthenticator implements Authenticator {
     String code = SecretGenerator.getInstance().randomString(OTP_LENGTH, SecretGenerator.DIGITS);
     boolean sent = MagicLinkSupport.sendOtpEmail(context.getSession(), user, code);
     if (sent) {
-      context.getAuthenticationSession().setAuthNote(AUTH_NOTE_OTP_HASH, hash(code));
+      byte[] salt = generateSalt();
+      context.getAuthenticationSession().setAuthNote(AUTH_NOTE_OTP_SALT, toHex(salt));
+      context.getAuthenticationSession().setAuthNote(AUTH_NOTE_OTP_HASH, hash(code, salt));
       context
           .getAuthenticationSession()
           .setAuthNote(
@@ -270,6 +279,7 @@ public final class EmailOtpAuthenticator implements Authenticator {
 
   private void clearOtpNotes(AuthenticationFlowContext context) {
     context.getAuthenticationSession().removeAuthNote(AUTH_NOTE_OTP_HASH);
+    context.getAuthenticationSession().removeAuthNote(AUTH_NOTE_OTP_SALT);
     context.getAuthenticationSession().removeAuthNote(AUTH_NOTE_OTP_EXPIRY);
     context.getAuthenticationSession().removeAuthNote(AUTH_NOTE_OTP_ATTEMPTS);
   }
@@ -320,18 +330,68 @@ public final class EmailOtpAuthenticator implements Authenticator {
     }
   }
 
-  static String hash(String code) {
+  /** Generates a fresh per-code salt. */
+  static byte[] generateSalt() {
+    return SecretGenerator.getInstance().randomBytes(OTP_SALT_BYTES);
+  }
+
+  /**
+   * Returns the HMAC-SHA256 hex digest of {@code code} keyed by {@code salt}.
+   *
+   * @param code plaintext OTP; never {@code null}
+   * @param salt per-code salt; never {@code null}
+   * @return lowercase hex MAC
+   */
+  static String hash(String code, byte[] salt) {
     try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      byte[] hashed = digest.digest(code.getBytes(StandardCharsets.UTF_8));
-      StringBuilder sb = new StringBuilder(hashed.length * 2);
-      for (byte b : hashed) {
-        sb.append(String.format("%02x", b));
-      }
-      return sb.toString();
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 unavailable", e);
+      Mac mac = Mac.getInstance(HMAC_SHA256);
+      mac.init(new SecretKeySpec(salt, HMAC_SHA256));
+      return toHex(mac.doFinal(code.getBytes(StandardCharsets.UTF_8)));
+    } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+      throw new IllegalStateException("HMAC-SHA256 unavailable", e);
     }
+  }
+
+  /**
+   * Returns whether {@code code} matches the stored salt and HMAC hex digest.
+   *
+   * @param code submitted OTP; may be {@code null}
+   * @param saltHex stored salt hex; may be {@code null}
+   * @param hashHex stored HMAC hex; may be {@code null}
+   * @return {@code true} only when all inputs are present and the MAC matches
+   */
+  static boolean otpMatches(String code, String saltHex, String hashHex) {
+    if (code == null || saltHex == null || hashHex == null) {
+      return false;
+    }
+    try {
+      byte[] salt = fromHex(saltHex);
+      String actual = hash(code, salt);
+      return MessageDigest.isEqual(
+          actual.getBytes(StandardCharsets.UTF_8), hashHex.getBytes(StandardCharsets.UTF_8));
+    } catch (IllegalArgumentException e) {
+      return false;
+    }
+  }
+
+  static String toHex(byte[] bytes) {
+    StringBuilder sb = new StringBuilder(bytes.length * 2);
+    for (byte b : bytes) {
+      sb.append(String.format("%02x", b));
+    }
+    return sb.toString();
+  }
+
+  static byte[] fromHex(String hex) {
+    if (hex.length() % 2 != 0) {
+      throw new IllegalArgumentException("odd hex length");
+    }
+    byte[] out = new byte[hex.length() / 2];
+    for (int i = 0; i < out.length; i++) {
+      int index = i * 2;
+      out[i] = (byte) Integer.parseInt(hex.substring(index, index + 2), 16);
+    }
+    return out;
   }
 
   @Override

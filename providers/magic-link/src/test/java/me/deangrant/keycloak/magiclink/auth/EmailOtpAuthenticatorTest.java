@@ -1,6 +1,9 @@
 package me.deangrant.keycloak.magiclink.auth;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
@@ -78,10 +81,7 @@ class EmailOtpAuthenticatorTest {
   @Test
   void acceptsMatchingCodeBeforeExpiry() {
     String code = "123456";
-    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH))
-        .thenReturn(EmailOtpAuthenticator.hash(code));
-    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_EXPIRY))
-        .thenReturn(String.valueOf(Time.currentTime() + 60));
+    stubPendingOtp(code);
     MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
     form.add(EmailOtpAuthenticator.FORM_PARAM_OTP, code);
     when(httpRequest.getDecodedFormParameters()).thenReturn(form);
@@ -90,6 +90,7 @@ class EmailOtpAuthenticatorTest {
     authenticator.action(context);
 
     verify(authSession).removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH);
+    verify(authSession).removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_SALT);
     verify(authSession).removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_EXPIRY);
     verify(authSession).removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_ATTEMPTS);
     verify(user).setEmailVerified(true);
@@ -98,10 +99,7 @@ class EmailOtpAuthenticatorTest {
 
   @Test
   void rejectsWrongCodeAndIncrementsAttempts() {
-    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH))
-        .thenReturn(EmailOtpAuthenticator.hash("123456"));
-    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_EXPIRY))
-        .thenReturn(String.valueOf(Time.currentTime() + 60));
+    stubPendingOtp("123456");
     when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_ATTEMPTS)).thenReturn(null);
     MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
     form.add(EmailOtpAuthenticator.FORM_PARAM_OTP, "000000");
@@ -117,10 +115,7 @@ class EmailOtpAuthenticatorTest {
 
   @Test
   void invalidatesCodeWhenMaxAttemptsReached() {
-    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH))
-        .thenReturn(EmailOtpAuthenticator.hash("123456"));
-    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_EXPIRY))
-        .thenReturn(String.valueOf(Time.currentTime() + 60));
+    stubPendingOtp("123456");
     when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_ATTEMPTS)).thenReturn("4");
     MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
     form.add(EmailOtpAuthenticator.FORM_PARAM_OTP, "000000");
@@ -129,6 +124,7 @@ class EmailOtpAuthenticatorTest {
     authenticator.action(context);
 
     verify(authSession).removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH);
+    verify(authSession).removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_SALT);
     verify(authSession).removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_EXPIRY);
     verify(authSession).removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_ATTEMPTS);
     verify(authSession, never())
@@ -148,6 +144,7 @@ class EmailOtpAuthenticatorTest {
     authenticator.action(context);
 
     verify(authSession).removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH);
+    verify(authSession).removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_SALT);
     verify(authSession).removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_EXPIRY);
     verify(authSession).removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_ATTEMPTS);
     verify(context)
@@ -157,8 +154,7 @@ class EmailOtpAuthenticatorTest {
 
   @Test
   void rejectsExpiredCode() {
-    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH))
-        .thenReturn(EmailOtpAuthenticator.hash("123456"));
+    stubPendingOtp("123456");
     when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_EXPIRY))
         .thenReturn(String.valueOf(Time.currentTime() - 10));
     MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
@@ -171,6 +167,26 @@ class EmailOtpAuthenticatorTest {
         ArgumentCaptor.forClass(AuthenticationFlowError.class);
     verify(context).failureChallenge(error.capture(), eq(formResponse));
     assertEquals(AuthenticationFlowError.EXPIRED_CODE, error.getValue());
+  }
+
+  @Test
+  void rejectsWhenSaltMissing() {
+    String code = "123456";
+    byte[] salt = EmailOtpAuthenticator.generateSalt();
+    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH))
+        .thenReturn(EmailOtpAuthenticator.hash(code, salt));
+    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_SALT)).thenReturn(null);
+    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_EXPIRY))
+        .thenReturn(String.valueOf(Time.currentTime() + 60));
+    MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
+    form.add(EmailOtpAuthenticator.FORM_PARAM_OTP, code);
+    when(httpRequest.getDecodedFormParameters()).thenReturn(form);
+
+    authenticator.action(context);
+
+    verify(context)
+        .failureChallenge(eq(AuthenticationFlowError.INVALID_CREDENTIALS), eq(formResponse));
+    verify(context, never()).success();
   }
 
   @Test
@@ -206,5 +222,41 @@ class EmailOtpAuthenticatorTest {
         .failureChallenge(
             eq(AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR), eq(formResponse));
     verify(context, never()).challenge(any());
+  }
+
+  @Test
+  void sameCodeDifferentSaltsProduceDifferentHashes() {
+    String code = "123456";
+    byte[] salt1 = new byte[EmailOtpAuthenticator.OTP_SALT_BYTES];
+    byte[] salt2 = new byte[EmailOtpAuthenticator.OTP_SALT_BYTES];
+    salt1[0] = 1;
+    salt2[0] = 2;
+
+    assertNotEquals(
+        EmailOtpAuthenticator.hash(code, salt1), EmailOtpAuthenticator.hash(code, salt2));
+  }
+
+  @Test
+  void otpMatchesAcceptsCorrectCodeAndRejectsWrong() {
+    String code = "654321";
+    byte[] salt = EmailOtpAuthenticator.generateSalt();
+    String saltHex = EmailOtpAuthenticator.toHex(salt);
+    String hashHex = EmailOtpAuthenticator.hash(code, salt);
+
+    assertTrue(EmailOtpAuthenticator.otpMatches(code, saltHex, hashHex));
+    assertFalse(EmailOtpAuthenticator.otpMatches("000000", saltHex, hashHex));
+    assertFalse(EmailOtpAuthenticator.otpMatches(code, null, hashHex));
+    assertFalse(EmailOtpAuthenticator.otpMatches(code, saltHex, null));
+    assertFalse(EmailOtpAuthenticator.otpMatches(null, saltHex, hashHex));
+  }
+
+  private void stubPendingOtp(String code) {
+    byte[] salt = EmailOtpAuthenticator.generateSalt();
+    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_SALT))
+        .thenReturn(EmailOtpAuthenticator.toHex(salt));
+    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH))
+        .thenReturn(EmailOtpAuthenticator.hash(code, salt));
+    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_EXPIRY))
+        .thenReturn(String.valueOf(Time.currentTime() + 60));
   }
 }
