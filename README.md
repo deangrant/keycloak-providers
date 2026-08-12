@@ -9,7 +9,7 @@ A collection of [Keycloak](https://www.keycloak.org/) SPI providers.
 
 | Provider | Description |
 |----------|-------------|
-| [last-login-timestamp](providers/last-login-timestamp/) | Event listener that records each user's most recent login as a Unix epoch timestamp on a user attribute |
+| [last-login-timestamp](providers/last-login-timestamp/) | Event listener that records each user's most recent login as milliseconds since Unix epoch on a user attribute |
 
 ## Build
 

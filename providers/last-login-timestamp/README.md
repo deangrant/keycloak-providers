@@ -1,6 +1,6 @@
 # Keycloak Last Login Timestamp Event Listener
 
-A [Keycloak](https://www.keycloak.org/) event listener that records each user's most recent login as a Unix epoch timestamp (milliseconds) in a user attribute.
+A [Keycloak](https://www.keycloak.org/) event listener that records each user's most recent login as milliseconds since Unix epoch in a user attribute.
 
 ## Overview
 
@@ -55,7 +55,7 @@ $KEYCLOAK_HOME/bin/kc.sh build
 
 Enable the listener on a realm via **Realm Settings > Events > Event listeners** by adding `last-login-timestamp` to the list of event listeners.
 
-After a user logs in, the timestamp appears on the user under **Users > (user) > Attributes** as `lastLoginTimestamp` (epoch milliseconds).
+After a user logs in, the timestamp appears on the user under **Users > (user) > Attributes** as `lastLoginTimestamp` (milliseconds since Unix epoch).
 
 ## Configuration
 
