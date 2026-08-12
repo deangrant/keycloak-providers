@@ -18,6 +18,7 @@ import org.keycloak.models.ClientModel;
 import org.keycloak.models.Constants;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
+import org.keycloak.models.SingleUseObjectProvider;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
@@ -253,15 +254,105 @@ public final class MagicLinkSupport {
       int validitySeconds,
       AuthenticationSessionModel authSession) {
     int absoluteExpiration = Time.currentTime() + validitySeconds;
-    String nonce = authSession.getClientNote(OIDCLoginProtocol.NONCE_PARAM);
     return new MagicLinkContinuationActionToken(
         user.getId(),
         absoluteExpiration,
         clientId,
-        nonce,
         authSession.getParentSession().getId(),
         authSession.getTabId(),
         authSession.getRedirectUri());
+  }
+
+  /** Map key stored under the latest-token SingleUseObject entry. */
+  public static final String LATEST_TOKEN_NONCE = "nonce";
+
+  /**
+   * SingleUseObject key prefix for the latest successfully emailed standard magic-link token for a
+   * user.
+   */
+  public static final String LATEST_MAGIC_LINK_KEY_PREFIX = "magic-link.latest.";
+
+  /**
+   * SingleUseObject key prefix for the latest successfully emailed continuation token for a user.
+   */
+  public static final String LATEST_CONTINUATION_KEY_PREFIX = "magic-link-continuation.latest.";
+
+  /**
+   * Records {@code token}'s action-verification nonce as the only redeemable outstanding token for
+   * this user and token type. Call only after a successful email send.
+   *
+   * @param session Keycloak session; never {@code null}
+   * @param token minted action token; never {@code null}
+   * @param lifespanSeconds TTL for the latest-pointer entry (token lifespan)
+   */
+  public static void rememberLatestActionToken(
+      KeycloakSession session,
+      org.keycloak.authentication.actiontoken.DefaultActionToken token,
+      int lifespanSeconds) {
+    if (session == null || token == null || token.getUserId() == null) {
+      return;
+    }
+    if (token.getActionVerificationNonce() == null || lifespanSeconds <= 0) {
+      return;
+    }
+    SingleUseObjectProvider singleUse = session.getProvider(SingleUseObjectProvider.class);
+    if (singleUse == null) {
+      return;
+    }
+    String key = latestTokenKey(token.getActionId(), token.getUserId());
+    if (key == null) {
+      return;
+    }
+    singleUse.put(
+        key,
+        lifespanSeconds,
+        Map.of(LATEST_TOKEN_NONCE, token.getActionVerificationNonce().toString()));
+  }
+
+  /**
+   * Returns whether {@code token} is still the latest successfully emailed token for its user, or
+   * whether no latest pointer exists yet (pre-upgrade outstanding mail).
+   *
+   * @param session Keycloak session; never {@code null}
+   * @param token presented action token; never {@code null}
+   * @return {@code true} when the token may be redeemed under the latest-token policy
+   */
+  public static boolean isLatestActionToken(
+      KeycloakSession session, org.keycloak.authentication.actiontoken.DefaultActionToken token) {
+    if (session == null || token == null || token.getUserId() == null) {
+      return false;
+    }
+    if (token.getActionVerificationNonce() == null) {
+      return false;
+    }
+    SingleUseObjectProvider singleUse = session.getProvider(SingleUseObjectProvider.class);
+    if (singleUse == null) {
+      // Fail open only when the provider is unavailable; prefer not to brick logins.
+      return true;
+    }
+    String key = latestTokenKey(token.getActionId(), token.getUserId());
+    if (key == null) {
+      return false;
+    }
+    Map<String, String> latest = singleUse.get(key);
+    if (latest == null) {
+      // No successful send recorded yet under this policy (legacy outstanding mail).
+      return true;
+    }
+    return token.getActionVerificationNonce().toString().equals(latest.get(LATEST_TOKEN_NONCE));
+  }
+
+  static String latestTokenKey(String tokenType, String userId) {
+    if (userId == null) {
+      return null;
+    }
+    if (MagicLinkActionToken.TOKEN_TYPE.equals(tokenType)) {
+      return LATEST_MAGIC_LINK_KEY_PREFIX + userId;
+    }
+    if (MagicLinkContinuationActionToken.TOKEN_TYPE.equals(tokenType)) {
+      return LATEST_CONTINUATION_KEY_PREFIX + userId;
+    }
+    return null;
   }
 
   /**

@@ -104,6 +104,7 @@ public final class MagicLinkAuthenticator extends UsernamePasswordForm {
     MagicLinkCustomizationProvider customization =
         customizationProviderFactory.create(context.getSession(), config.raw());
     boolean sent = false;
+    MagicLinkActionToken token = null;
     try {
       if (!customization.canAuthenticate(context, user, config)) {
         if (created.created()) {
@@ -117,7 +118,7 @@ public final class MagicLinkAuthenticator extends UsernamePasswordForm {
         return;
       }
 
-      MagicLinkActionToken token =
+      token =
           MagicLinkSupport.createMagicLinkToken(
               user,
               clientId,
@@ -150,6 +151,8 @@ public final class MagicLinkAuthenticator extends UsernamePasswordForm {
           AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR, challengeResponse);
       return;
     }
+    int lifespan = config.getTokenLifespan().orElse(15 * 60);
+    MagicLinkSupport.rememberLatestActionToken(context.getSession(), token, lifespan);
     context.challenge(context.form().createForm("view-email.ftl"));
   }
 

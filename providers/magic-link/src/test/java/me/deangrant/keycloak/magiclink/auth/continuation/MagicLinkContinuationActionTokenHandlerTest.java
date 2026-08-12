@@ -8,9 +8,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import jakarta.ws.rs.core.Response;
+import java.util.Map;
+import java.util.UUID;
+import me.deangrant.keycloak.magiclink.MagicLinkSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.keycloak.TokenVerifier;
 import org.keycloak.authentication.actiontoken.ActionTokenContext;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.forms.login.LoginFormsProvider;
@@ -18,6 +22,7 @@ import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientProvider;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
+import org.keycloak.models.SingleUseObjectProvider;
 import org.keycloak.models.UserModel;
 import org.keycloak.services.managers.AuthenticationManager;
 import org.keycloak.sessions.AuthenticationSessionModel;
@@ -75,6 +80,24 @@ class MagicLinkContinuationActionTokenHandlerTest {
   @Test
   void continuationTokensAreSingleUse() {
     assertFalse(handler.canUseTokenRepeatedly(token, tokenContext));
+  }
+
+  @Test
+  void getVerifiersRejectsSupersededToken() throws Exception {
+    UUID latest = UUID.randomUUID();
+    UUID older = UUID.randomUUID();
+    SingleUseObjectProvider singleUse = org.mockito.Mockito.mock(SingleUseObjectProvider.class);
+    when(session.getProvider(SingleUseObjectProvider.class)).thenReturn(singleUse);
+    when(token.getActionId()).thenReturn(MagicLinkContinuationActionToken.TOKEN_TYPE);
+    when(token.getActionVerificationNonce()).thenReturn(older);
+    when(singleUse.get(MagicLinkSupport.LATEST_CONTINUATION_KEY_PREFIX + "user-1"))
+        .thenReturn(Map.of(MagicLinkSupport.LATEST_TOKEN_NONCE, latest.toString()));
+
+    TokenVerifier.Predicate<? super MagicLinkContinuationActionToken>[] verifiers =
+        handler.getVerifiers(tokenContext);
+
+    org.junit.jupiter.api.Assertions.assertThrows(
+        org.keycloak.common.VerificationException.class, () -> verifiers[0].test(token));
   }
 
   @Test

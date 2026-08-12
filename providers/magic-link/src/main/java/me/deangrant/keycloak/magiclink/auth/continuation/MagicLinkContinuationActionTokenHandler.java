@@ -2,9 +2,12 @@ package me.deangrant.keycloak.magiclink.auth.continuation;
 
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
+import me.deangrant.keycloak.magiclink.MagicLinkSupport;
 import org.jboss.logging.Logger;
+import org.keycloak.TokenVerifier;
 import org.keycloak.authentication.actiontoken.AbstractActionTokenHandler;
 import org.keycloak.authentication.actiontoken.ActionTokenContext;
+import org.keycloak.authentication.actiontoken.TokenUtils;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventType;
 import org.keycloak.forms.login.LoginFormsProvider;
@@ -66,6 +69,16 @@ public final class MagicLinkContinuationActionTokenHandler
       MagicLinkContinuationActionToken token,
       ActionTokenContext<MagicLinkContinuationActionToken> tokenContext) {
     return false;
+  }
+
+  @Override
+  public TokenVerifier.Predicate<? super MagicLinkContinuationActionToken>[] getVerifiers(
+      ActionTokenContext<MagicLinkContinuationActionToken> tokenContext) {
+    return TokenUtils.predicates(
+        TokenUtils.checkThat(
+            token -> MagicLinkSupport.isLatestActionToken(tokenContext.getSession(), token),
+            Errors.EXPIRED_CODE,
+            Messages.EXPIRED_ACTION_TOKEN_NO_SESSION));
   }
 
   @Override

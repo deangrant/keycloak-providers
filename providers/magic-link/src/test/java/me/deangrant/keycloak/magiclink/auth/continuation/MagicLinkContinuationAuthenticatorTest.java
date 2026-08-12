@@ -216,7 +216,7 @@ class MagicLinkContinuationAuthenticatorTest {
 
     MagicLinkContinuationActionToken token =
         new MagicLinkContinuationActionToken(
-            "user-1", 1000, "account", null, "root", "tab", "https://app/callback");
+            "user-1", 1000, "account", "root", "tab", "https://app/callback");
 
     try (MockedStatic<MagicLinkSupport> support =
         mockStatic(MagicLinkSupport.class, CALLS_REAL_METHODS)) {
@@ -231,6 +231,9 @@ class MagicLinkContinuationAuthenticatorTest {
           .thenReturn(false);
 
       authenticator.action(context);
+
+      support.verify(
+          () -> MagicLinkSupport.rememberLatestActionToken(any(), any(), anyInt()), never());
     }
 
     verify(authSession, never()).setAuthNote(eq(ContinuationNotes.SESSION_INITIATED), any());
@@ -239,5 +242,65 @@ class MagicLinkContinuationAuthenticatorTest {
     verify(context)
         .failureChallenge(
             eq(AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR), eq(formResponse));
+  }
+
+  @Test
+  void successfulSendRemembersLatestToken() {
+    MagicLinkContinuationAuthenticator authenticator = new MagicLinkContinuationAuthenticator();
+    when(context.getAuthenticationSession()).thenReturn(authSession);
+    when(context.getSession()).thenReturn(session);
+    when(context.getRealm()).thenReturn(realm);
+    when(context.getHttpRequest()).thenReturn(httpRequest);
+    when(context.getEvent()).thenReturn(event);
+    when(context.newEvent()).thenReturn(newEvent);
+    when(context.form()).thenReturn(forms);
+    when(context.getAuthenticatorConfig()).thenReturn(null);
+    when(context.getProtector()).thenReturn(protector);
+    when(context.getExecution()).thenReturn(execution);
+    when(execution.getId()).thenReturn("exec-1");
+    when(authSession.getAuthNote(ContinuationNotes.SESSION_EXPIRATION)).thenReturn(null);
+    when(authSession.getAuthNote(ContinuationNotes.SESSION_CONFIRMED)).thenReturn(null);
+    when(session.users()).thenReturn(users);
+    when(session.getContext()).thenReturn(keycloakContext);
+    when(keycloakContext.getClient()).thenReturn(client);
+    when(client.getClientId()).thenReturn("account");
+    when(realm.isLoginWithEmailAllowed()).thenReturn(true);
+    when(realm.isBruteForceProtected()).thenReturn(false);
+    when(users.getUserByEmail(realm, "alice@example.com")).thenReturn(user);
+    when(user.getEmail()).thenReturn("alice@example.com");
+    when(user.isEnabled()).thenReturn(true);
+    when(user.getId()).thenReturn("user-1");
+    when(event.detail(any(), org.mockito.ArgumentMatchers.<String>any())).thenReturn(event);
+    when(event.event(any())).thenReturn(event);
+    when(event.user(user)).thenReturn(event);
+    when(forms.createForm("view-email-continuation.ftl")).thenReturn(formResponse);
+
+    MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
+    form.add(AuthenticationManager.FORM_USERNAME, "alice@example.com");
+    when(httpRequest.getDecodedFormParameters()).thenReturn(form);
+
+    MagicLinkContinuationActionToken token =
+        new MagicLinkContinuationActionToken(
+            "user-1", 1000, "account", "root", "tab", "https://app/callback");
+
+    try (MockedStatic<MagicLinkSupport> support =
+        mockStatic(MagicLinkSupport.class, CALLS_REAL_METHODS)) {
+      support
+          .when(() -> MagicLinkSupport.createContinuationToken(any(), any(), anyInt(), any()))
+          .thenReturn(token);
+      support
+          .when(() -> MagicLinkSupport.linkFromActionToken(any(), any(), any()))
+          .thenReturn("https://example/continuation");
+      support
+          .when(() -> MagicLinkSupport.sendContinuationEmail(any(), any(), any()))
+          .thenReturn(true);
+
+      authenticator.action(context);
+
+      support.verify(() -> MagicLinkSupport.rememberLatestActionToken(session, token, 60 * 10));
+    }
+
+    verify(forms).createForm("view-email-continuation.ftl");
+    verify(context).challenge(formResponse);
   }
 }

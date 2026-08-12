@@ -199,6 +199,7 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
       return;
     }
 
+    MagicLinkSupport.rememberLatestActionToken(context.getSession(), token, validitySeconds);
     beginWaitingSession(context, email);
     context.challenge(context.form().createForm("view-email-continuation.ftl"));
   }

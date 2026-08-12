@@ -2,6 +2,7 @@ package me.deangrant.keycloak.magiclink.auth;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mockStatic;
@@ -242,6 +243,9 @@ class MagicLinkAuthenticatorTest {
 
       MagicLinkAuthenticator authenticator = new MagicLinkAuthenticator((s, config) -> failSend);
       authenticator.action(context);
+
+      support.verify(
+          () -> MagicLinkSupport.rememberLatestActionToken(any(), any(), anyInt()), never());
     }
 
     verify(forms, never()).createForm("view-email.ftl");
@@ -249,6 +253,55 @@ class MagicLinkAuthenticatorTest {
     verify(context)
         .failureChallenge(
             eq(AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR), eq(formResponse));
+  }
+
+  @Test
+  void successfulSendRemembersLatestToken() {
+    when(context.getAuthenticatorConfig()).thenReturn(null);
+    when(users.getUserByEmail(realm, "alice@example.com")).thenReturn(existingUser);
+    when(existingUser.getEmail()).thenReturn("alice@example.com");
+    when(existingUser.isEnabled()).thenReturn(true);
+    when(existingUser.getId()).thenReturn("user-1");
+
+    MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
+    form.add(AuthenticationManager.FORM_USERNAME, "alice@example.com");
+    when(httpRequest.getDecodedFormParameters()).thenReturn(form);
+
+    MagicLinkActionToken token =
+        new MagicLinkActionToken(
+            "user-1",
+            1000,
+            "account",
+            "https://app/callback",
+            null,
+            null,
+            null,
+            null,
+            null,
+            false,
+            null);
+
+    try (MockedStatic<MagicLinkSupport> support =
+        mockStatic(MagicLinkSupport.class, CALLS_REAL_METHODS)) {
+      support
+          .when(
+              () ->
+                  MagicLinkSupport.createMagicLinkToken(
+                      any(), any(), any(OptionalInt.class), anyBoolean(), any()))
+          .thenReturn(token);
+      support
+          .when(() -> MagicLinkSupport.linkFromActionToken(any(), any(), any()))
+          .thenReturn("https://example/magic-link");
+
+      MagicLinkAuthenticator authenticator =
+          new MagicLinkAuthenticator((s, config) -> new DefaultAllowProvider());
+      authenticator.action(context);
+
+      support.verify(() -> MagicLinkSupport.rememberLatestActionToken(session, token, 15 * 60));
+    }
+
+    verify(forms).createForm("view-email.ftl");
+    verify(context).challenge(formResponse);
   }
 
   private static final class DefaultAllowProvider implements MagicLinkCustomizationProvider {

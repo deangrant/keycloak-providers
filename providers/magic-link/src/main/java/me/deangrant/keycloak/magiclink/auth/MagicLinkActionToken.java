@@ -1,7 +1,6 @@
 package me.deangrant.keycloak.magiclink.auth;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import java.util.UUID;
 import org.keycloak.authentication.actiontoken.DefaultActionToken;
 
 /** Action token carried by a standard magic-link email. */
@@ -70,7 +69,9 @@ public final class MagicLinkActionToken extends DefaultActionToken {
       String codeChallengeMethod,
       Boolean rememberMe,
       String responseMode) {
-    super(userId, TOKEN_TYPE, absoluteExpirationInSecs, parseNonce(nonce));
+    // Fresh action-verification nonce per mint (null → Keycloak generates a secure UUID).
+    // OIDC nonce stays only in the JSON field below so re-sends are uniquely addressable.
+    super(userId, TOKEN_TYPE, absoluteExpirationInSecs, null);
     this.issuedFor = clientId;
     this.redirectUri = redirectUri;
     this.scope = scope;
@@ -84,17 +85,6 @@ public final class MagicLinkActionToken extends DefaultActionToken {
 
   private MagicLinkActionToken() {
     // Required for JWT deserialization.
-  }
-
-  private static UUID parseNonce(String nonce) {
-    if (nonce == null) {
-      return null;
-    }
-    try {
-      return UUID.fromString(nonce);
-    } catch (IllegalArgumentException e) {
-      return null;
-    }
   }
 
   public String getRedirectUri() {

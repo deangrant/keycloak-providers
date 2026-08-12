@@ -1,7 +1,6 @@
 package me.deangrant.keycloak.magiclink.auth.continuation;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import java.util.UUID;
 import org.keycloak.authentication.actiontoken.DefaultActionToken;
 
 /** Action token that confirms a pending magic-link continuation on the original device. */
@@ -29,7 +28,6 @@ public final class MagicLinkContinuationActionToken extends DefaultActionToken {
    * @param userId Keycloak user id ({@code sub})
    * @param absoluteExpirationInSecs absolute expiry epoch seconds
    * @param clientId client id stored as {@code azp}
-   * @param nonce OIDC nonce; may be {@code null}
    * @param sessionId root authentication session id to confirm
    * @param tabId authentication tab id within the root session
    * @param redirectUri original redirect URI shown on the confirmation page
@@ -38,11 +36,11 @@ public final class MagicLinkContinuationActionToken extends DefaultActionToken {
       String userId,
       int absoluteExpirationInSecs,
       String clientId,
-      String nonce,
       String sessionId,
       String tabId,
       String redirectUri) {
-    super(userId, TOKEN_TYPE, absoluteExpirationInSecs, parseNonce(nonce));
+    // Fresh action-verification nonce per mint (null → Keycloak generates a secure UUID).
+    super(userId, TOKEN_TYPE, absoluteExpirationInSecs, null);
     this.issuedFor = clientId;
     this.sessionId = sessionId;
     this.tabId = tabId;
@@ -51,17 +49,6 @@ public final class MagicLinkContinuationActionToken extends DefaultActionToken {
 
   private MagicLinkContinuationActionToken() {
     // Required for JWT deserialization.
-  }
-
-  private static UUID parseNonce(String nonce) {
-    if (nonce == null) {
-      return null;
-    }
-    try {
-      return UUID.fromString(nonce);
-    } catch (IllegalArgumentException e) {
-      return null;
-    }
   }
 
   public String getSessionId() {

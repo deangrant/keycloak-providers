@@ -1,10 +1,13 @@
 package me.deangrant.keycloak.magiclink.auth;
 
 import jakarta.ws.rs.core.Response;
+import me.deangrant.keycloak.magiclink.MagicLinkSupport;
 import org.jboss.logging.Logger;
 import org.keycloak.OAuth2Constants;
+import org.keycloak.TokenVerifier;
 import org.keycloak.authentication.actiontoken.AbstractActionTokenHandler;
 import org.keycloak.authentication.actiontoken.ActionTokenContext;
+import org.keycloak.authentication.actiontoken.TokenUtils;
 import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventType;
@@ -46,6 +49,16 @@ public final class MagicLinkActionTokenHandler
   public boolean canUseTokenRepeatedly(
       MagicLinkActionToken token, ActionTokenContext<MagicLinkActionToken> tokenContext) {
     return false;
+  }
+
+  @Override
+  public TokenVerifier.Predicate<? super MagicLinkActionToken>[] getVerifiers(
+      ActionTokenContext<MagicLinkActionToken> tokenContext) {
+    return TokenUtils.predicates(
+        TokenUtils.checkThat(
+            token -> MagicLinkSupport.isLatestActionToken(tokenContext.getSession(), token),
+            Errors.EXPIRED_CODE,
+            Messages.EXPIRED_ACTION_TOKEN_NO_SESSION));
   }
 
   @Override
