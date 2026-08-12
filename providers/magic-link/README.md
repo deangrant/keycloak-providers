@@ -50,7 +50,7 @@ Browser forms
 └── Email OTP              [REQUIRED]
 ```
 
-Optional config: **OTP lifespan (seconds)** (default `300`).
+Optional config: **OTP lifespan (seconds)** (default `300`), **OTP max attempts** (default `5`).
 
 ## Email and login templates
 
@@ -97,6 +97,8 @@ Depend on this module from another Keycloak extension:
 - Magic Link / Continuation action tokens are single-use.
 - Continuation confirmation depends on the original authentication session still being alive in the cluster.
 - Email OTP stores a SHA-256 hash of the code in the authentication session (not the plaintext code).
+- Email OTP invalidates the current code after too many wrong guesses (`otpMaxAttempts`, default 5); the user must resend for a new code and attempt budget.
+- Enable realm **Brute force detection** for account-level lockout across sessions/IPs; Email OTP respects those lockouts when enabled.
 - Compile/runtime APIs come from Keycloak (`keycloak-services` is `provided`); do not shade Keycloak into the JAR.
 - Supported Keycloak versions match the repository matrix (see root README).
 
@@ -106,4 +108,4 @@ Depend on this module from another Keycloak extension:
 |-------------|-------------|
 | `magic-link` | `forceCreate`, `updateProfile`, `updatePassword`, `tokenLifespanSeconds` |
 | `magic-link-continuation` | `forceCreate`, `timeoutMinutes` |
-| `email-otp` | `otpTtlSeconds` |
+| `email-otp` | `otpTtlSeconds`, `otpMaxAttempts` |
