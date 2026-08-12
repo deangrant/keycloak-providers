@@ -91,9 +91,20 @@ public final class MagicLinkActionTokenHandler
             : ResolveRelative.resolveRelativeUri(
                 tokenContext.getSession(), client.getRootUrl(), client.getBaseUrl());
 
-    String verified =
-        RedirectUtils.verifyRedirectUri(tokenContext.getSession(), redirectUri, client);
-    if (verified != null) {
+    if (redirectUri != null) {
+      String verified =
+          RedirectUtils.verifyRedirectUri(tokenContext.getSession(), redirectUri, client);
+      if (verified == null) {
+        LOG.warnf(
+            "Magic link rejected invalid redirect URI for user %s client %s",
+            token.getUserId(), token.getIssuedFor());
+        tokenContext.getEvent().error(Errors.INVALID_REDIRECT_URI);
+        return ErrorPage.error(
+            tokenContext.getSession(),
+            authSession,
+            Response.Status.BAD_REQUEST,
+            Messages.INVALID_REDIRECT_URI);
+      }
       authSession.setAuthNote(
           AuthenticationManager.SET_REDIRECT_URI_AFTER_REQUIRED_ACTIONS, "true");
       authSession.setRedirectUri(verified);
