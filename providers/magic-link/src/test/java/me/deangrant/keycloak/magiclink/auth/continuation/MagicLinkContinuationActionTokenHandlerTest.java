@@ -75,10 +75,8 @@ class MagicLinkContinuationActionTokenHandlerTest {
     when(token.getSessionId()).thenReturn("root-session");
     when(token.getTabId()).thenReturn("tab-1");
     when(token.getIssuedFor()).thenReturn("account");
-    when(token.getRedirectUri()).thenReturn("https://app.example/callback");
     when(token.getUserId()).thenReturn("user-1");
     when(forms.setActionUri(any())).thenReturn(forms);
-    when(forms.setAttribute(any(), any())).thenReturn(forms);
   }
 
   @Test
@@ -118,6 +116,7 @@ class MagicLinkContinuationActionTokenHandlerTest {
     verify(event).success();
     verify(forms).createForm("email-confirmation.ftl");
     verify(forms, never()).createForm("email-confirmation-error.ftl");
+    verify(forms, never()).setAttribute(any(), any());
   }
 
   @Test

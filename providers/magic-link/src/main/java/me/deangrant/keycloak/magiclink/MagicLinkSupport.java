@@ -257,8 +257,7 @@ public final class MagicLinkSupport {
         absoluteExpiration,
         clientId,
         authSession.getParentSession().getId(),
-        authSession.getTabId(),
-        authSession.getRedirectUri());
+        authSession.getTabId());
   }
 
   /** Map key stored under the latest-token SingleUseObject entry. */

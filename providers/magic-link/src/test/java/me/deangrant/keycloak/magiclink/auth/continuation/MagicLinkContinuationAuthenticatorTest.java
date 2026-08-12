@@ -284,8 +284,7 @@ class MagicLinkContinuationAuthenticatorTest {
     when(httpRequest.getDecodedFormParameters()).thenReturn(form);
 
     MagicLinkContinuationActionToken token =
-        new MagicLinkContinuationActionToken(
-            "user-1", 1000, "account", "root", "tab", "https://app/callback");
+        new MagicLinkContinuationActionToken("user-1", 1000, "account", "root", "tab");
 
     try (MockedStatic<MagicLinkSupport> support =
         mockStatic(MagicLinkSupport.class, CALLS_REAL_METHODS)) {
@@ -349,8 +348,7 @@ class MagicLinkContinuationAuthenticatorTest {
     when(httpRequest.getDecodedFormParameters()).thenReturn(form);
 
     MagicLinkContinuationActionToken token =
-        new MagicLinkContinuationActionToken(
-            "user-1", 1000, "account", "root", "tab", "https://app/callback");
+        new MagicLinkContinuationActionToken("user-1", 1000, "account", "root", "tab");
 
     try (MockedStatic<MagicLinkSupport> support =
         mockStatic(MagicLinkSupport.class, CALLS_REAL_METHODS)) {

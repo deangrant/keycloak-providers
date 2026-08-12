@@ -11,16 +11,12 @@ public final class MagicLinkContinuationActionToken extends DefaultActionToken {
 
   private static final String JSON_FIELD_SESSION_ID = "sid";
   private static final String JSON_FIELD_TAB_ID = "tid";
-  private static final String JSON_FIELD_REDIRECT_URI = "rdu";
 
   @JsonProperty(JSON_FIELD_SESSION_ID)
   private String sessionId;
 
   @JsonProperty(JSON_FIELD_TAB_ID)
   private String tabId;
-
-  @JsonProperty(JSON_FIELD_REDIRECT_URI)
-  private String redirectUri;
 
   /**
    * Creates a continuation token that points back to the original authentication session.
@@ -30,21 +26,18 @@ public final class MagicLinkContinuationActionToken extends DefaultActionToken {
    * @param clientId client id stored as {@code azp}
    * @param sessionId root authentication session id to confirm
    * @param tabId authentication tab id within the root session
-   * @param redirectUri original redirect URI shown on the confirmation page
    */
   public MagicLinkContinuationActionToken(
       String userId,
       int absoluteExpirationInSecs,
       String clientId,
       String sessionId,
-      String tabId,
-      String redirectUri) {
+      String tabId) {
     // Fresh action-verification nonce per mint (null → Keycloak generates a secure UUID).
     super(userId, TOKEN_TYPE, absoluteExpirationInSecs, null);
     this.issuedFor = clientId;
     this.sessionId = sessionId;
     this.tabId = tabId;
-    this.redirectUri = redirectUri;
   }
 
   private MagicLinkContinuationActionToken() {
@@ -57,9 +50,5 @@ public final class MagicLinkContinuationActionToken extends DefaultActionToken {
 
   public String getTabId() {
     return tabId;
-  }
-
-  public String getRedirectUri() {
-    return redirectUri;
   }
 }

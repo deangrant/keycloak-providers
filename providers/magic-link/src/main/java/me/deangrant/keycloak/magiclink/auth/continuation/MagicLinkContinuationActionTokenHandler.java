@@ -102,10 +102,7 @@ public final class MagicLinkContinuationActionTokenHandler
       if (original != null) {
         original.setAuthNote(ContinuationNotes.SESSION_CONFIRMED, "true");
         tokenContext.getEvent().success();
-        return forms
-            .setActionUri(URI.create("#"))
-            .setAttribute("redirectUri", token.getRedirectUri())
-            .createForm("email-confirmation.ftl");
+        return forms.setActionUri(URI.create("#")).createForm("email-confirmation.ftl");
       }
     }
 
