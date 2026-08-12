@@ -1,6 +1,7 @@
 package me.deangrant.keycloak.magiclink;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -43,50 +44,31 @@ class MagicLinkSupportGetOrCreateTest {
   void returnsExistingUserWithoutCreating() {
     when(users.getUserByEmail(realm, "alice@example.com")).thenReturn(existing);
 
-    UserModel result =
-        MagicLinkSupport.getOrCreate(
-            session,
-            realm,
-            "alice@example.com",
-            true,
-            true,
-            true,
-            event,
-            MagicLinkSupport.REGISTER_METHOD_MAGIC_LINK);
+    MagicLinkSupport.GetOrCreateResult result =
+        MagicLinkSupport.getOrCreate(session, realm, "alice@example.com", true, true, true);
 
-    assertEquals(existing, result);
+    assertEquals(existing, result.user());
+    assertFalse(result.created());
     verify(users, never()).addUser(any(), any());
     verify(existing, never()).addRequiredAction(any(UserModel.RequiredAction.class));
   }
 
   @Test
-  void createsUserWhenForcedAndMissing() {
+  void createsUserWhenForcedAndMissingWithoutRegisterEvent() {
     when(users.getUserByEmail(realm, "new@example.com")).thenReturn(null);
     when(users.getUserByUsername(realm, "new@example.com")).thenReturn(null);
     when(users.addUser(realm, "new@example.com")).thenReturn(created);
-    when(created.getUsername()).thenReturn("new@example.com");
-    when(created.getEmail()).thenReturn("new@example.com");
-    when(event.event(any())).thenReturn(event);
-    when(event.detail(any(), org.mockito.ArgumentMatchers.<String>any())).thenReturn(event);
-    when(event.user(created)).thenReturn(event);
 
-    UserModel result =
-        MagicLinkSupport.getOrCreate(
-            session,
-            realm,
-            "new@example.com",
-            true,
-            true,
-            true,
-            event,
-            MagicLinkSupport.REGISTER_METHOD_MAGIC_LINK);
+    MagicLinkSupport.GetOrCreateResult result =
+        MagicLinkSupport.getOrCreate(session, realm, "new@example.com", true, true, true);
 
-    assertEquals(created, result);
+    assertEquals(created, result.user());
+    assertTrue(result.created());
     verify(created).setEnabled(true);
     verify(created).setEmail("new@example.com");
     verify(created).addRequiredAction(UserModel.RequiredAction.UPDATE_PASSWORD);
     verify(created).addRequiredAction(UserModel.RequiredAction.UPDATE_PROFILE);
-    verify(event).success();
+    verify(event, never()).success();
   }
 
   @Test
@@ -94,19 +76,64 @@ class MagicLinkSupportGetOrCreateTest {
     when(users.getUserByEmail(realm, "missing@example.com")).thenReturn(null);
     when(users.getUserByUsername(realm, "missing@example.com")).thenReturn(null);
 
-    UserModel result =
-        MagicLinkSupport.getOrCreate(
-            session,
-            realm,
-            "missing@example.com",
-            false,
-            false,
-            false,
-            event,
-            MagicLinkSupport.REGISTER_METHOD_MAGIC_LINK);
+    MagicLinkSupport.GetOrCreateResult result =
+        MagicLinkSupport.getOrCreate(session, realm, "missing@example.com", false, false, false);
 
-    assertNull(result);
+    assertNull(result.user());
+    assertFalse(result.created());
     verify(users, never()).addUser(eq(realm), any());
+  }
+
+  @Test
+  void emitRegisterEventWritesSuccess() {
+    when(created.getUsername()).thenReturn("new@example.com");
+    when(created.getEmail()).thenReturn("new@example.com");
+    when(event.event(any())).thenReturn(event);
+    when(event.detail(any(), org.mockito.ArgumentMatchers.<String>any())).thenReturn(event);
+    when(event.user(created)).thenReturn(event);
+
+    MagicLinkSupport.emitRegisterEvent(event, created, MagicLinkSupport.REGISTER_METHOD_MAGIC_LINK);
+
+    verify(event).success();
+  }
+
+  @Test
+  void finalizeKeepsCreatedUserAndEmitsRegister() {
+    when(created.getUsername()).thenReturn("new@example.com");
+    when(created.getEmail()).thenReturn("new@example.com");
+    when(event.event(any())).thenReturn(event);
+    when(event.detail(any(), org.mockito.ArgumentMatchers.<String>any())).thenReturn(event);
+    when(event.user(created)).thenReturn(event);
+
+    MagicLinkSupport.GetOrCreateResult result =
+        new MagicLinkSupport.GetOrCreateResult(created, true);
+    MagicLinkSupport.finalizeForceCreatedUser(
+        session, realm, result, true, event, MagicLinkSupport.REGISTER_METHOD_MAGIC_LINK);
+
+    verify(event).success();
+    verify(users, never()).removeUser(any(), any());
+  }
+
+  @Test
+  void finalizeRemovesCreatedUserWhenNotKept() {
+    MagicLinkSupport.GetOrCreateResult result =
+        new MagicLinkSupport.GetOrCreateResult(created, true);
+    MagicLinkSupport.finalizeForceCreatedUser(
+        session, realm, result, false, event, MagicLinkSupport.REGISTER_METHOD_MAGIC_LINK);
+
+    verify(users).removeUser(realm, created);
+    verify(event, never()).success();
+  }
+
+  @Test
+  void finalizeIgnoresExistingUsers() {
+    MagicLinkSupport.GetOrCreateResult result =
+        new MagicLinkSupport.GetOrCreateResult(existing, false);
+    MagicLinkSupport.finalizeForceCreatedUser(
+        session, realm, result, false, event, MagicLinkSupport.REGISTER_METHOD_MAGIC_LINK);
+
+    verify(users, never()).removeUser(any(), any());
+    verify(event, never()).success();
   }
 
   @Test

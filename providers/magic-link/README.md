@@ -96,6 +96,7 @@ Depend on this module from another Keycloak extension:
 - Requires working realm SMTP; failed sends are logged and do not authenticate the user.
 - Magic Link / Continuation action tokens are single-use.
 - Magic Link and Continuation show the same waiting page for unknown emails (no mail sent) to avoid account enumeration.
+- With `forceCreate`, a user may be created before the email is sent (action tokens need a user id); if the send fails (or customization denies auth), that newly created user is removed and `REGISTER` is emitted only after a successful send.
 - Continuation confirmation depends on the original authentication session still being alive in the cluster.
 - Email OTP stores a SHA-256 hash of the code in the authentication session (not the plaintext code).
 - Email OTP invalidates the current code after too many wrong guesses (`otpMaxAttempts`, default 5); the user must resend for a new code and attempt budget.

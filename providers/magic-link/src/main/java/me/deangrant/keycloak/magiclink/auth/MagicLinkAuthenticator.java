@@ -63,16 +63,15 @@ public final class MagicLinkAuthenticator extends UsernamePasswordForm {
     MagicLinkConfig config = new MagicLinkConfig(context.getAuthenticatorConfig());
     String clientId = context.getSession().getContext().getClient().getClientId();
 
-    UserModel user =
+    MagicLinkSupport.GetOrCreateResult created =
         MagicLinkSupport.getOrCreate(
             context.getSession(),
             context.getRealm(),
             email,
             config.isForceCreate(),
             config.isUpdateProfile(),
-            config.isUpdatePassword(),
-            context.newEvent(),
-            MagicLinkSupport.REGISTER_METHOD_MAGIC_LINK);
+            config.isUpdatePassword());
+    UserModel user = created.user();
 
     if (user == null
         || MagicLinkSupport.trimToNull(user.getEmail()) == null
@@ -91,13 +90,20 @@ public final class MagicLinkAuthenticator extends UsernamePasswordForm {
     }
 
     if (!enabledUser(context, user)) {
+      if (created.created()) {
+        MagicLinkSupport.removeUser(context.getSession(), context.getRealm(), user);
+      }
       return;
     }
 
     MagicLinkCustomizationProvider customization =
         customizationProviderFactory.create(context.getSession(), config.raw());
+    boolean sent = false;
     try {
       if (!customization.canAuthenticate(context, user, config)) {
+        if (created.created()) {
+          MagicLinkSupport.removeUser(context.getSession(), context.getRealm(), user);
+        }
         return;
       }
 
@@ -110,11 +116,19 @@ public final class MagicLinkAuthenticator extends UsernamePasswordForm {
               context.getAuthenticationSession());
       String link =
           MagicLinkSupport.linkFromActionToken(context.getSession(), context.getRealm(), token);
-      boolean sent = customization.sendMagicLinkEmail(context.getSession(), user, link, config);
+      sent = customization.sendMagicLinkEmail(context.getSession(), user, link, config);
       LOG.debugf("Magic link email to %s sent=%s", user.getEmail(), sent);
     } finally {
       customization.close();
     }
+
+    MagicLinkSupport.finalizeForceCreatedUser(
+        context.getSession(),
+        context.getRealm(),
+        created,
+        sent,
+        context.newEvent(),
+        MagicLinkSupport.REGISTER_METHOD_MAGIC_LINK);
 
     context
         .getAuthenticationSession()

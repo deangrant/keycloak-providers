@@ -140,16 +140,10 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
                 me.deangrant.keycloak.magiclink.auth.MagicLinkConfig.FORCE_CREATE,
                 "false"));
 
-    UserModel user =
+    MagicLinkSupport.GetOrCreateResult created =
         MagicLinkSupport.getOrCreate(
-            context.getSession(),
-            context.getRealm(),
-            email,
-            forceCreate,
-            false,
-            false,
-            context.newEvent(),
-            MagicLinkSupport.REGISTER_METHOD_MAGIC_LINK);
+            context.getSession(), context.getRealm(), email, forceCreate, false, false);
+    UserModel user = created.user();
 
     if (user == null
         || MagicLinkSupport.trimToNull(user.getEmail()) == null
@@ -166,6 +160,9 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
     }
 
     if (!enabledUser(context, user)) {
+      if (created.created()) {
+        MagicLinkSupport.removeUser(context.getSession(), context.getRealm(), user);
+      }
       return;
     }
 
@@ -179,6 +176,14 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
         MagicLinkSupport.linkFromActionToken(context.getSession(), context.getRealm(), token);
     boolean sent = MagicLinkSupport.sendContinuationEmail(context.getSession(), user, link);
     LOG.debugf("Continuation magic link email to %s sent=%s", user.getEmail(), sent);
+
+    MagicLinkSupport.finalizeForceCreatedUser(
+        context.getSession(),
+        context.getRealm(),
+        created,
+        sent,
+        context.newEvent(),
+        MagicLinkSupport.REGISTER_METHOD_MAGIC_LINK);
 
     beginWaitingSession(context, email);
     context.challenge(context.form().createForm("view-email-continuation.ftl"));

@@ -86,33 +86,35 @@ public final class MagicLinkSupport {
   /**
    * Looks up a user by email/username and optionally creates one when missing.
    *
+   * <p>Does not emit a {@code REGISTER} event; callers must call {@link #finalizeForceCreatedUser}
+   * after a successful email send (or remove the user on failure).
+   *
    * @param session Keycloak session; never {@code null}
    * @param realm realm to search; never {@code null}
-   * @param emailOrUsername submitted identity; blank yields {@code null}
+   * @param emailOrUsername submitted identity; blank yields a null user result
    * @param forceCreate when {@code true}, creates an enabled user if none exists
    * @param updateProfile when creating, adds {@code UPDATE_PROFILE}
    * @param updatePassword when creating, adds {@code UPDATE_PASSWORD}
-   * @param event optional event builder for {@code REGISTER}; may be {@code null}
-   * @param registerMethod value written to {@code Details.REGISTER_METHOD} on create
-   * @return existing or newly created user, or {@code null} when missing and create is disabled
+   * @return result with the user (or {@code null}) and whether that user was newly created
    */
-  public static UserModel getOrCreate(
+  public static GetOrCreateResult getOrCreate(
       KeycloakSession session,
       RealmModel realm,
       String emailOrUsername,
       boolean forceCreate,
       boolean updateProfile,
-      boolean updatePassword,
-      EventBuilder event,
-      String registerMethod) {
+      boolean updatePassword) {
     String identity = trimToNull(emailOrUsername);
     if (identity == null) {
-      return null;
+      return new GetOrCreateResult(null, false);
     }
 
     UserModel user = KeycloakModelUtils.findUserByNameOrEmail(session, realm, identity);
-    if (user != null || !forceCreate) {
-      return user;
+    if (user != null) {
+      return new GetOrCreateResult(user, false);
+    }
+    if (!forceCreate) {
+      return new GetOrCreateResult(null, false);
     }
 
     user = session.users().addUser(realm, identity);
@@ -126,16 +128,81 @@ public final class MagicLinkSupport {
     if (updateProfile) {
       user.addRequiredAction(UserModel.RequiredAction.UPDATE_PROFILE);
     }
-    if (event != null) {
-      event
-          .event(EventType.REGISTER)
-          .detail(Details.REGISTER_METHOD, registerMethod)
-          .detail(Details.USERNAME, user.getUsername())
-          .detail(Details.EMAIL, user.getEmail())
-          .user(user)
-          .success();
+    return new GetOrCreateResult(user, true);
+  }
+
+  /**
+   * Outcome of {@link #getOrCreate}: the resolved user and whether it was created in this call.
+   *
+   * @param user existing or newly created user, or {@code null} when missing and create is disabled
+   * @param created {@code true} when {@code user} was created by this call
+   */
+  public record GetOrCreateResult(UserModel user, boolean created) {}
+
+  /**
+   * Emits a successful {@code REGISTER} event for a user created via magic-link force-create.
+   *
+   * @param event event builder; ignored when {@code null}
+   * @param user newly created user; never {@code null}
+   * @param registerMethod value for {@code Details.REGISTER_METHOD}
+   */
+  public static void emitRegisterEvent(EventBuilder event, UserModel user, String registerMethod) {
+    if (event == null || user == null) {
+      return;
     }
-    return user;
+    event
+        .event(EventType.REGISTER)
+        .detail(Details.REGISTER_METHOD, registerMethod)
+        .detail(Details.USERNAME, user.getUsername())
+        .detail(Details.EMAIL, user.getEmail())
+        .user(user)
+        .success();
+  }
+
+  /**
+   * Removes a user created for force-create that should not be retained.
+   *
+   * @param session Keycloak session; never {@code null}
+   * @param realm realm owning the user; never {@code null}
+   * @param user user to remove; ignored when {@code null}
+   */
+  public static void removeUser(KeycloakSession session, RealmModel realm, UserModel user) {
+    if (user == null) {
+      return;
+    }
+    try {
+      session.users().removeUser(realm, user);
+    } catch (RuntimeException e) {
+      LOG.warnf(e, "Failed to roll back force-created user %s", user.getId());
+    }
+  }
+
+  /**
+   * After an email send attempt for a force-created user, emit {@code REGISTER} on success or
+   * remove the orphan on failure. Existing users are left unchanged.
+   *
+   * @param session Keycloak session; never {@code null}
+   * @param realm realm; never {@code null}
+   * @param result outcome from {@link #getOrCreate}
+   * @param keep {@code true} when the email was sent (or the user should otherwise be retained)
+   * @param event optional builder for {@code REGISTER}; may be {@code null}
+   * @param registerMethod value for {@code Details.REGISTER_METHOD} when emitting
+   */
+  public static void finalizeForceCreatedUser(
+      KeycloakSession session,
+      RealmModel realm,
+      GetOrCreateResult result,
+      boolean keep,
+      EventBuilder event,
+      String registerMethod) {
+    if (result == null || !result.created() || result.user() == null) {
+      return;
+    }
+    if (keep) {
+      emitRegisterEvent(event, result.user(), registerMethod);
+    } else {
+      removeUser(session, realm, result.user());
+    }
   }
 
   /**
