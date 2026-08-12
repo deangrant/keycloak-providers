@@ -130,15 +130,28 @@ class MagicLinkContinuationActionTokenHandlerTest {
   }
 
   @Test
-  void startFreshAuthenticationSessionInvalidatesWhenRootMissing() {
-    when(clients.getClientByClientId(realm, "account")).thenReturn(client);
-    when(authSessions.getRootAuthenticationSession(realm, "root-session")).thenReturn(null);
+  void startFreshAuthenticationSessionDoesNotJoinOriginalTab() {
+    when(authSessions.getRootAuthenticationSession(realm, "root-session")).thenReturn(root);
+    when(root.getAuthenticationSession(client, "tab-1")).thenReturn(originalSession);
     when(tokenContext.createAuthenticationSessionForClient("account")).thenReturn(freshSession);
 
     AuthenticationSessionModel result =
         handler.startFreshAuthenticationSession(token, tokenContext);
 
     assertSame(freshSession, result);
-    verify(freshSession).setAuthNote(AuthenticationManager.INVALIDATE_ACTION_TOKEN, "true");
+    verify(freshSession).setAuthNote(AuthenticationManager.END_AFTER_REQUIRED_ACTIONS, "true");
+    verify(root, never()).getAuthenticationSession(any(), any());
+    verify(root, never()).createAuthenticationSession(any());
+  }
+
+  @Test
+  void startFreshAuthenticationSessionEndsAfterRequiredActions() {
+    when(tokenContext.createAuthenticationSessionForClient("account")).thenReturn(freshSession);
+
+    AuthenticationSessionModel result =
+        handler.startFreshAuthenticationSession(token, tokenContext);
+
+    assertSame(freshSession, result);
+    verify(freshSession).setAuthNote(AuthenticationManager.END_AFTER_REQUIRED_ACTIONS, "true");
   }
 }

@@ -100,6 +100,7 @@ Depend on this module from another Keycloak extension:
 - Magic Link and Continuation also show that waiting page when the user is disabled or temporarily locked (BFD), and Magic Link does the same when customization denies auth—no mail is sent and the flow never stalls without a challenge.
 - With `forceCreate`, a user may be created before the email is sent (action tokens need a user id); if the send fails (or customization denies auth), that newly created user is removed and `REGISTER` is emitted only after a successful send.
 - Continuation confirmation depends on the original authentication session still being alive in the cluster.
+- The Continuation click device uses its own authentication session; only the original waiting session is marked confirmed (the click device does not join that session).
 - Email OTP stores a SHA-256 hash of the code in the authentication session (not the plaintext code).
 - Email OTP invalidates the current code after too many wrong guesses (`otpMaxAttempts`, default 5); the user must resend for a new code and attempt budget.
 - Enable realm **Brute force detection** for account-level lockout across sessions/IPs; Email OTP respects those lockouts when enabled.

@@ -42,26 +42,11 @@ public final class MagicLinkContinuationActionTokenHandler
   public AuthenticationSessionModel startFreshAuthenticationSession(
       MagicLinkContinuationActionToken token,
       ActionTokenContext<MagicLinkContinuationActionToken> tokenContext) {
-    ClientModel client =
-        tokenContext
-            .getSession()
-            .clients()
-            .getClientByClientId(tokenContext.getRealm(), token.getIssuedFor());
-    AuthenticationSessionProvider provider = tokenContext.getSession().authenticationSessions();
-    RootAuthenticationSessionModel root =
-        provider.getRootAuthenticationSession(tokenContext.getRealm(), token.getSessionId());
-    if (root == null) {
-      AuthenticationSessionModel authSession =
-          tokenContext.createAuthenticationSessionForClient(token.getIssuedFor());
-      authSession.setAuthNote(AuthenticationManager.INVALIDATE_ACTION_TOKEN, "true");
-      return authSession;
-    }
-
-    AuthenticationSessionModel existing = root.getAuthenticationSession(client, token.getTabId());
-    if (existing != null) {
-      return existing;
-    }
-    return root.createAuthenticationSession(client);
+    // Click device must not join the original waiting tab's auth session.
+    AuthenticationSessionModel authSession =
+        tokenContext.createAuthenticationSessionForClient(token.getIssuedFor());
+    authSession.setAuthNote(AuthenticationManager.END_AFTER_REQUIRED_ACTIONS, "true");
+    return authSession;
   }
 
   @Override
