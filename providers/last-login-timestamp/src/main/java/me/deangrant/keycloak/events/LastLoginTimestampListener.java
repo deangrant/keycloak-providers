@@ -1,20 +1,22 @@
 package me.deangrant.keycloak.events;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 import org.jboss.logging.Logger;
 import org.keycloak.events.Details;
 import org.keycloak.events.Event;
 import org.keycloak.events.EventListenerProvider;
-import org.keycloak.events.EventListenerTransaction;
 import org.keycloak.events.EventType;
 import org.keycloak.events.admin.AdminEvent;
+import org.keycloak.models.AbstractKeycloakTransaction;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
-import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.utils.StringUtil;
 
 /**
@@ -57,8 +59,7 @@ public class LastLoginTimestampListener implements EventListenerProvider {
 
     private final KeycloakSession session;
     private final String attributeName;
-    private final EventListenerTransaction tx =
-            new EventListenerTransaction(null, this::updateLastLoginTimestamp);
+    private final DeferredLoginTransaction tx = new DeferredLoginTransaction();
 
     /**
      * @param session        Keycloak session used for user lookup and attribute writes
@@ -113,22 +114,19 @@ public class LastLoginTimestampListener implements EventListenerProvider {
             // Only serialize when a write may be needed. The re-read inside the
             // lock guards against another thread having written a newer value.
             synchronized (userLock(realmId, userId)) {
-                KeycloakModelUtils.runJobInTransaction(
-                        session.getKeycloakSessionFactory(),
-                        session.getContext(),
-                        s -> {
-                            RealmModel realm = s.realms().getRealm(realmId);
-                            if (realm == null) {
-                                return;
-                            }
-                            UserModel user = s.users().getUserById(realm, userId);
-                            if (user != null) {
-                                String currentTimestamp = user.getFirstAttribute(attributeName);
-                                if (isMissingOrOlder(currentTimestamp, newTimestamp)) {
-                                    user.setSingleAttribute(attributeName, Long.toString(newTimestamp));
-                                }
-                            }
-                        });
+                runInTransaction(session.getKeycloakSessionFactory(), s -> {
+                    RealmModel realm = s.realms().getRealm(realmId);
+                    if (realm == null) {
+                        return;
+                    }
+                    UserModel user = s.users().getUserById(realm, userId);
+                    if (user != null) {
+                        String currentTimestamp = user.getFirstAttribute(attributeName);
+                        if (isMissingOrOlder(currentTimestamp, newTimestamp)) {
+                            user.setSingleAttribute(attributeName, Long.toString(newTimestamp));
+                        }
+                    }
+                });
             }
         } catch (Exception e) {
             LOG.warn(formatEventWithError(event, e), e);
@@ -145,20 +143,36 @@ public class LastLoginTimestampListener implements EventListenerProvider {
      */
     private String readCurrentTimestamp(String realmId, String userId) {
         String[] current = new String[1];
-        KeycloakModelUtils.runJobInTransaction(
-                session.getKeycloakSessionFactory(),
-                session.getContext(),
-                s -> {
-                    RealmModel realm = s.realms().getRealm(realmId);
-                    if (realm == null) {
-                        return;
-                    }
-                    UserModel user = s.users().getUserById(realm, userId);
-                    if (user != null) {
-                        current[0] = user.getFirstAttribute(attributeName);
-                    }
-                });
+        runInTransaction(session.getKeycloakSessionFactory(), s -> {
+            RealmModel realm = s.realms().getRealm(realmId);
+            if (realm == null) {
+                return;
+            }
+            UserModel user = s.users().getUserById(realm, userId);
+            if (user != null) {
+                current[0] = user.getFirstAttribute(attributeName);
+            }
+        });
         return current[0];
+    }
+
+    /**
+     * Runs {@code task} in a fresh Keycloak session/transaction using public
+     * session APIs only (no private model utilities).
+     *
+     * @param factory the session factory
+     * @param task    work to run inside the new transaction
+     */
+    private static void runInTransaction(KeycloakSessionFactory factory, Consumer<KeycloakSession> task) {
+        try (KeycloakSession s = factory.create()) {
+            s.getTransactionManager().begin();
+            try {
+                task.accept(s);
+            } catch (RuntimeException e) {
+                s.getTransactionManager().setRollbackOnly();
+                throw e;
+            }
+        }
     }
 
     /**
@@ -257,5 +271,30 @@ public class LastLoginTimestampListener implements EventListenerProvider {
             sb.append(StringUtil.sanitizeSpacesAndQuotes(value, QUOTE));
         }
         sb.append(QUOTE);
+    }
+
+    /**
+     * Queues login events and processes them after the enclosing Keycloak
+     * transaction commits successfully.
+     */
+    private final class DeferredLoginTransaction extends AbstractKeycloakTransaction {
+
+        private final List<Event> events = new ArrayList<>();
+
+        void addEvent(Event event) {
+            events.add(event);
+        }
+
+        @Override
+        protected void commitImpl() {
+            for (Event event : events) {
+                updateLastLoginTimestamp(event);
+            }
+        }
+
+        @Override
+        protected void rollbackImpl() {
+            events.clear();
+        }
     }
 }
