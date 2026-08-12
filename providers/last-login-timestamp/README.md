@@ -15,14 +15,14 @@ The provider hooks into Keycloak's event system and, on every successful `LOGIN`
 
 - Listens for `EventType.LOGIN` only and queues each event on a deferred `AbstractKeycloakTransaction` enlisted with `enlistAfterCompletion`.
 - After the login transaction commits, each update is submitted to a small background thread pool (4 daemon threads). The login HTTP response is not held while the write runs. Each task opens one fresh session/transaction under a striped lock keyed by realm/user and performs read-compare-write via public Keycloak session APIs. The write is skipped when the stored timestamp is already equal to or newer than the event time (monotonic per node). Same-user updates share a stripe; a fixed 256-stripe table avoids unbounded per-user lock maps.
-- Failures are caught and logged at `WARN` on the `org.keycloak.events` logger using Keycloak's native `key="value"` format. Only non-sensitive detail keys are logged; `sessionId` and `ipAddress` are omitted.
+- All update exceptions are caught and logged at `WARN` on the `org.keycloak.events` logger using Keycloak's native `key="value"` format, so writes stay best-effort and cannot disrupt the after-commit / background path. Only non-sensitive detail keys are logged; `sessionId` and `ipAddress` are omitted.
 
 ### Limitations
 
 - Only successful `EventType.LOGIN` updates the attribute. `IMPERSONATE`, `CLIENT_LOGIN`, `REFRESH_TOKEN`, identity-provider login variants, and other non-`LOGIN` events do not.
 - Updates are best-effort and monotonic **per Keycloak node**, not cluster-wide. In a multi-node deployment, concurrent logins routed to different nodes may still race at the database layer. That cluster non-monotonicity is accepted for this advisory last-login signal.
 - Federated users in **READ_ONLY** (or similar read-only) storage cannot receive attribute writes; `lastLoginTimestamp` may never appear for those users. Failures are logged at `WARN` and do not affect login. If you need local attributes on federated users, configure federation edit mode accordingly (for example `UNSYNCED`)—that is outside this provider.
-- Monitor `org.keycloak.events` at `WARN` for `failed to update … attribute` (the `error=` field includes the exception simple name, such as `ReadOnlyException`).
+- Monitor `org.keycloak.events` at `WARN` for `failed to update … attribute` (the `error=` field includes the exception simple name, such as `ReadOnlyException`). Those WARN lines cover both expected write failures and unexpected defects; bugs in the update path may appear only there (with stack trace), not as thrown failures.
 - The attribute may appear shortly after the login response returns; do not assume it is visible before the client receives the response.
 - Do not rely on this attribute alone for audit or compliance. Use Keycloak event logs or a dedicated audit store if canonical login history is required.
 - The Keycloak `eventsListener` SPI is internal and may change; this provider uses that SPI contract but avoids private Keycloak helper utilities beyond it.
