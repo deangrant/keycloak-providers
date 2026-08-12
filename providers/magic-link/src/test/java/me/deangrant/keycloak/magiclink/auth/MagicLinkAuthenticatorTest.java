@@ -325,6 +325,82 @@ class MagicLinkAuthenticatorTest {
     verify(context).challenge(formResponse);
   }
 
+  @Test
+  void successfulSendPassesRememberMeTrueToTokenMint() {
+    when(context.getAuthenticatorConfig()).thenReturn(null);
+    when(realm.isRememberMe()).thenReturn(true);
+    when(users.getUserByEmail(realm, "alice@example.com")).thenReturn(existingUser);
+    when(existingUser.getEmail()).thenReturn("alice@example.com");
+    when(existingUser.isEnabled()).thenReturn(true);
+    when(existingUser.getId()).thenReturn("user-1");
+
+    MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
+    form.add(AuthenticationManager.FORM_USERNAME, "alice@example.com");
+    form.add("rememberMe", "on");
+    when(httpRequest.getDecodedFormParameters()).thenReturn(form);
+
+    MagicLinkActionToken token =
+        new MagicLinkActionToken(
+            "user-1",
+            1000,
+            "account",
+            "https://app/callback",
+            null,
+            null,
+            null,
+            null,
+            null,
+            true,
+            null);
+
+    try (MockedStatic<MagicLinkSupport> support =
+        mockStatic(MagicLinkSupport.class, CALLS_REAL_METHODS)) {
+      support
+          .when(
+              () ->
+                  MagicLinkSupport.createMagicLinkToken(
+                      any(), any(), any(OptionalInt.class), anyBoolean(), any()))
+          .thenReturn(token);
+      support
+          .when(() -> MagicLinkSupport.linkFromActionToken(any(), any(), any()))
+          .thenReturn("https://example/magic-link");
+
+      MagicLinkAuthenticator authenticator =
+          new MagicLinkAuthenticator((s, config) -> new DefaultAllowProvider());
+      authenticator.action(context);
+
+      support.verify(
+          () ->
+              MagicLinkSupport.createMagicLinkToken(
+                  eq(existingUser),
+                  eq("account"),
+                  any(OptionalInt.class),
+                  eq(true),
+                  eq(authSession)));
+    }
+  }
+
+  @Test
+  void forceCreateWithInvalidIdentityDoesNotCreateUser() {
+    when(context.getAuthenticatorConfig()).thenReturn(authenticatorConfig);
+    when(authenticatorConfig.getConfig()).thenReturn(Map.of(MagicLinkConfig.FORCE_CREATE, "true"));
+    when(users.getUserByEmail(realm, "not-an-email")).thenReturn(null);
+    when(users.getUserByUsername(realm, "not-an-email")).thenReturn(null);
+
+    MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
+    form.add(AuthenticationManager.FORM_USERNAME, "not-an-email");
+    when(httpRequest.getDecodedFormParameters()).thenReturn(form);
+
+    MagicLinkAuthenticator authenticator =
+        new MagicLinkAuthenticator((s, config) -> new DefaultAllowProvider());
+    authenticator.action(context);
+
+    verify(users, never()).addUser(any(), any());
+    verify(forms).createForm("view-email.ftl");
+    verify(context).forceChallenge(formResponse);
+    verify(context, never()).challenge(any());
+  }
+
   private static final class DefaultAllowProvider implements MagicLinkCustomizationProvider {
     @Override
     public boolean canAuthenticate(

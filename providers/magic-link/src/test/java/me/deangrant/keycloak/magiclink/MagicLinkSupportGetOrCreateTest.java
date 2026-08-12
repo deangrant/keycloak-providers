@@ -85,6 +85,19 @@ class MagicLinkSupportGetOrCreateTest {
   }
 
   @Test
+  void returnsNullWhenForcedButIdentityNotEmail() {
+    when(users.getUserByEmail(realm, "not-an-email")).thenReturn(null);
+    when(users.getUserByUsername(realm, "not-an-email")).thenReturn(null);
+
+    MagicLinkSupport.GetOrCreateResult result =
+        MagicLinkSupport.getOrCreate(session, realm, "not-an-email", true, false, false);
+
+    assertNull(result.user());
+    assertFalse(result.created());
+    verify(users, never()).addUser(any(), any());
+  }
+
+  @Test
   void emitRegisterEventWritesSuccess() {
     when(created.getUsername()).thenReturn("new@example.com");
     when(created.getEmail()).thenReturn("new@example.com");

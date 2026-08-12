@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.keycloak.authentication.actiontoken.ActionTokenContext;
+import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.http.HttpRequest;
@@ -72,6 +73,12 @@ class MagicLinkActionTokenHandlerRedirectTest {
 
   @Test
   void handleTokenAbortsWhenRedirectVerificationFails() {
+    when(token.getState()).thenReturn("state-1");
+    when(token.getNonce()).thenReturn("nonce-1");
+    when(token.getCodeChallenge()).thenReturn("challenge");
+    when(token.getCodeChallengeMethod()).thenReturn("S256");
+    when(token.getResponseMode()).thenReturn("query");
+
     try (MockedStatic<MagicLinkSupport> support =
             mockStatic(MagicLinkSupport.class, CALLS_REAL_METHODS);
         MockedStatic<RedirectUtils> redirects = mockStatic(RedirectUtils.class);
@@ -100,6 +107,12 @@ class MagicLinkActionTokenHandlerRedirectTest {
       assertSame(errorResponse, response);
       verify(event).error(Errors.INVALID_REDIRECT_URI);
       verify(user, never()).setEmailVerified(true);
+      verify(authSession, never()).setClientNote(eq(OIDCLoginProtocol.STATE_PARAM), any());
+      verify(authSession, never()).setClientNote(eq(OIDCLoginProtocol.NONCE_PARAM), any());
+      verify(authSession, never()).setClientNote(eq(OIDCLoginProtocol.CODE_CHALLENGE_PARAM), any());
+      verify(authSession, never())
+          .setClientNote(eq(OIDCLoginProtocol.CODE_CHALLENGE_METHOD_PARAM), any());
+      verify(authSession, never()).setClientNote(eq(OIDCLoginProtocol.RESPONSE_MODE_PARAM), any());
       authManager.verify(
           () -> AuthenticationManager.redirectToRequiredActions(any(), any(), any(), any(), any()),
           never());
@@ -110,6 +123,9 @@ class MagicLinkActionTokenHandlerRedirectTest {
   void handleTokenSetsRedirectNotesWhenVerificationSucceeds() {
     when(token.getRedirectUri()).thenReturn("https://app.example/callback");
     when(token.getState()).thenReturn("state-1");
+    when(token.getNonce()).thenReturn("nonce-1");
+    when(token.getCodeChallenge()).thenReturn("challenge");
+    when(token.getCodeChallengeMethod()).thenReturn("S256");
     when(token.getResponseMode()).thenReturn("query");
 
     try (MockedStatic<MagicLinkSupport> support =
@@ -144,9 +160,49 @@ class MagicLinkActionTokenHandlerRedirectTest {
       verify(authSession)
           .setClientNote(OIDCLoginProtocol.REDIRECT_URI_PARAM, "https://app.example/callback");
       verify(authSession).setClientNote(OIDCLoginProtocol.STATE_PARAM, "state-1");
+      verify(authSession).setClientNote(OIDCLoginProtocol.NONCE_PARAM, "nonce-1");
+      verify(authSession).setUserSessionNote(OIDCLoginProtocol.NONCE_PARAM, "nonce-1");
+      verify(authSession).setClientNote(OIDCLoginProtocol.CODE_CHALLENGE_PARAM, "challenge");
+      verify(authSession).setClientNote(OIDCLoginProtocol.CODE_CHALLENGE_METHOD_PARAM, "S256");
       verify(authSession).setClientNote(OIDCLoginProtocol.RESPONSE_MODE_PARAM, "query");
+      verify(authSession).removeAuthNote(Details.REMEMBER_ME);
       verify(user).setEmailVerified(true);
       verify(event, never()).error(eq(Errors.INVALID_REDIRECT_URI));
+    }
+  }
+
+  @Test
+  void handleTokenSetsRememberMeWhenEnabled() {
+    when(token.getRedirectUri()).thenReturn("https://app.example/callback");
+    when(token.getRememberMe()).thenReturn(true);
+    when(realm.isRememberMe()).thenReturn(true);
+
+    try (MockedStatic<MagicLinkSupport> support =
+            mockStatic(MagicLinkSupport.class, CALLS_REAL_METHODS);
+        MockedStatic<RedirectUtils> redirects = mockStatic(RedirectUtils.class);
+        MockedStatic<AuthenticationManager> authManager = mockStatic(AuthenticationManager.class)) {
+      support
+          .when(() -> MagicLinkSupport.resolveClient(session, realm, authSession, "account"))
+          .thenReturn(client);
+      redirects
+          .when(
+              () ->
+                  RedirectUtils.verifyRedirectUri(session, "https://app.example/callback", client))
+          .thenReturn("https://app.example/callback");
+      authManager
+          .when(
+              () -> AuthenticationManager.nextRequiredAction(session, authSession, request, event))
+          .thenReturn(null);
+      authManager
+          .when(
+              () ->
+                  AuthenticationManager.redirectToRequiredActions(
+                      session, realm, authSession, null, null))
+          .thenReturn(successResponse);
+
+      assertSame(successResponse, handler.handleToken(token, tokenContext));
+      verify(authSession).setAuthNote(Details.REMEMBER_ME, "true");
+      verify(event).detail(Details.REMEMBER_ME, "true");
     }
   }
 

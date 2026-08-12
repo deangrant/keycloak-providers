@@ -341,6 +341,16 @@ class EmailOtpAuthenticatorTest {
     verify(context).challenge(formResponse);
   }
 
+  @Test
+  void requiresUserAndConfiguredForEmail() {
+    assertTrue(authenticator.requiresUser());
+    when(user.getEmail()).thenReturn("alice@example.com");
+    assertTrue(authenticator.configuredFor(session, realm, user));
+    when(user.getEmail()).thenReturn("  ");
+    assertFalse(authenticator.configuredFor(session, realm, user));
+    assertFalse(authenticator.configuredFor(session, realm, null));
+  }
+
   private void stubPendingOtp(String code) {
     byte[] salt = EmailOtpAuthenticator.generateSalt();
     when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_SALT))

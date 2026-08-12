@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -38,10 +39,12 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.UserProvider;
 import org.keycloak.services.managers.AuthenticationManager;
+import org.keycloak.services.managers.AuthenticationSessionManager;
 import org.keycloak.services.managers.BruteForceProtector;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -163,6 +166,37 @@ class MagicLinkContinuationAuthenticatorTest {
         MagicLinkContinuationAuthenticator.isExpirationElapsed(null));
     org.junit.jupiter.api.Assertions.assertTrue(
         MagicLinkContinuationAuthenticator.isExpirationElapsed("not-a-timestamp"));
+  }
+
+  @Test
+  void authenticateFailsWhenWaitingSessionExpired() {
+    MagicLinkContinuationAuthenticator authenticator = new MagicLinkContinuationAuthenticator();
+    when(context.getAuthenticationSession()).thenReturn(authSession);
+    when(context.getSession()).thenReturn(session);
+    when(context.getRealm()).thenReturn(realm);
+    when(context.getEvent()).thenReturn(event);
+    when(context.form()).thenReturn(forms);
+    when(context.getExecution()).thenReturn(execution);
+    when(execution.getId()).thenReturn("exec-1");
+    when(authSession.getAuthNote(ContinuationNotes.SESSION_EXPIRATION))
+        .thenReturn(ZonedDateTime.now(ZoneOffset.UTC).minusMinutes(1).toString());
+    when(forms.createLoginUsername()).thenReturn(formResponse);
+    when(forms.setExecution(any())).thenReturn(forms);
+    when(forms.setError(any(), any())).thenReturn(forms);
+    when(forms.setError(any())).thenReturn(forms);
+    when(forms.addError(any())).thenReturn(forms);
+
+    try (MockedConstruction<AuthenticationSessionManager> ignored =
+        mockConstruction(AuthenticationSessionManager.class)) {
+      authenticator.authenticate(context);
+    }
+
+    verify(event).error(Errors.SESSION_EXPIRED);
+    verify(context)
+        .failureChallenge(
+            eq(AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR), eq(formResponse));
+    verify(context, never()).success();
+    verify(context, never()).challenge(any());
   }
 
   @Test

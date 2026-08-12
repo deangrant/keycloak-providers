@@ -112,15 +112,13 @@ public final class MagicLinkSupport {
     if (user != null) {
       return new GetOrCreateResult(user, false);
     }
-    if (!forceCreate) {
+    if (!forceCreate || !isValidEmail(identity)) {
       return new GetOrCreateResult(null, false);
     }
 
     user = session.users().addUser(realm, identity);
     user.setEnabled(true);
-    if (isValidEmail(identity)) {
-      user.setEmail(identity);
-    }
+    user.setEmail(identity);
     if (updatePassword) {
       user.addRequiredAction(UserModel.RequiredAction.UPDATE_PASSWORD);
     }
