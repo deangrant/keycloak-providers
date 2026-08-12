@@ -175,6 +175,15 @@ public class LastLoginTimestampListenerFactory implements EventListenerProviderF
         return PROVIDER_ID;
     }
 
+    /**
+     * Returns the effective user attribute name after {@link #init(Config.Scope)}.
+     *
+     * @return the resolved attribute name (default or validated override)
+     */
+    String resolvedAttributeName() {
+        return attributeName;
+    }
+
     private static final class DaemonThreadFactory implements ThreadFactory {
 
         private final AtomicInteger sequence = new AtomicInteger();
