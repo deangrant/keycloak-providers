@@ -94,6 +94,7 @@ Depend on this module from another Keycloak extension:
 ## Limitations
 
 - Requires working realm SMTP; failed sends are logged and do not authenticate the user.
+- When SMTP fails for a **known** user, Magic Link / Continuation / Email OTP show an email-send error so the user can retry; the waiting or continuation session is not started. Unknown emails still get the generic waiting page (anti-enumeration).
 - Magic Link / Continuation action tokens are single-use.
 - Magic Link and Continuation show the same waiting page for unknown emails (no mail sent) to avoid account enumeration.
 - With `forceCreate`, a user may be created before the email is sent (action tokens need a user id); if the send fails (or customization denies auth), that newly created user is removed and `REGISTER` is emitted only after a successful send.

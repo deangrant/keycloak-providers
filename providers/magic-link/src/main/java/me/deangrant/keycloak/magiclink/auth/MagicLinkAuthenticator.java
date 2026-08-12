@@ -133,6 +133,13 @@ public final class MagicLinkAuthenticator extends UsernamePasswordForm {
     context
         .getAuthenticationSession()
         .setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, email);
+    if (!sent) {
+      context.getEvent().user(user).event(EventType.LOGIN_ERROR).error(Errors.EMAIL_SEND_FAILED);
+      Response challengeResponse = challenge(context, Messages.EMAIL_SENT_ERROR, FIELD_USERNAME);
+      context.failureChallenge(
+          AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR, challengeResponse);
+      return;
+    }
     context.challenge(context.form().createForm("view-email.ftl"));
   }
 

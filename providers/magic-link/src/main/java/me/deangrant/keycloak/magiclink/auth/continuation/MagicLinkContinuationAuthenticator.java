@@ -185,6 +185,17 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
         context.newEvent(),
         MagicLinkSupport.REGISTER_METHOD_MAGIC_LINK);
 
+    if (!sent) {
+      context
+          .getAuthenticationSession()
+          .setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, email);
+      context.getEvent().user(user).event(EventType.LOGIN_ERROR).error(Errors.EMAIL_SEND_FAILED);
+      Response challengeResponse = challenge(context, Messages.EMAIL_SENT_ERROR, FIELD_USERNAME);
+      context.failureChallenge(
+          AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR, challengeResponse);
+      return;
+    }
+
     beginWaitingSession(context, email);
     context.challenge(context.form().createForm("view-email-continuation.ftl"));
   }

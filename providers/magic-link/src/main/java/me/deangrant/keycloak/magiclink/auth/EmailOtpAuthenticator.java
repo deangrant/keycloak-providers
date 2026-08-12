@@ -92,7 +92,10 @@ public final class EmailOtpAuthenticator implements Authenticator {
     if (challengeIfBruteForceLocked(context)) {
       return;
     }
-    sendOtpIfNeeded(context);
+    if (!sendOtpIfNeeded(context)) {
+      challengeEmailSendFailed(context);
+      return;
+    }
     context.challenge(otpForm(context, null));
   }
 
@@ -105,7 +108,10 @@ public final class EmailOtpAuthenticator implements Authenticator {
     MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
     if (formData.containsKey("resend")) {
       clearOtpNotes(context);
-      sendOtpIfNeeded(context);
+      if (!sendOtpIfNeeded(context)) {
+        challengeEmailSendFailed(context);
+        return;
+      }
       context.challenge(otpForm(context, null));
       return;
     }
@@ -218,15 +224,32 @@ public final class EmailOtpAuthenticator implements Authenticator {
     return Messages.ACCOUNT_PERMANENTLY_DISABLED;
   }
 
-  private void sendOtpIfNeeded(AuthenticationFlowContext context) {
+  private void challengeEmailSendFailed(AuthenticationFlowContext context) {
+    context
+        .getEvent()
+        .user(context.getUser())
+        .event(EventType.LOGIN_ERROR)
+        .error(Errors.EMAIL_SEND_FAILED);
+    context.failureChallenge(
+        AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR,
+        otpForm(context, new FormMessage(Messages.EMAIL_SENT_ERROR)));
+  }
+
+  /**
+   * Sends an OTP when none is pending for this authentication session.
+   *
+   * @return {@code true} when an OTP is already pending or a new email was sent; {@code false} when
+   *     send failed (or no user)
+   */
+  private boolean sendOtpIfNeeded(AuthenticationFlowContext context) {
     if (context.getAuthenticationSession().getAuthNote(AUTH_NOTE_OTP_HASH) != null) {
-      return;
+      return true;
     }
 
     UserModel user = context.getUser();
     if (user == null) {
       LOG.warn("Email OTP authenticator requires an identified user");
-      return;
+      return false;
     }
 
     String code = SecretGenerator.getInstance().randomString(OTP_LENGTH, SecretGenerator.DIGITS);
@@ -239,9 +262,10 @@ public final class EmailOtpAuthenticator implements Authenticator {
               AUTH_NOTE_OTP_EXPIRY, String.valueOf(Time.currentTime() + ttlSeconds(context)));
       context.getAuthenticationSession().removeAuthNote(AUTH_NOTE_OTP_ATTEMPTS);
       LOG.debugf("Sent email OTP to %s", user.getEmail());
-    } else {
-      LOG.warnf("Failed to send email OTP to %s", user.getEmail());
+      return true;
     }
+    LOG.warnf("Failed to send email OTP to %s", user.getEmail());
+    return false;
   }
 
   private void clearOtpNotes(AuthenticationFlowContext context) {

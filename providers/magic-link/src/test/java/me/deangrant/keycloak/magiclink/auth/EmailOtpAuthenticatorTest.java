@@ -3,6 +3,8 @@ package me.deangrant.keycloak.magiclink.auth;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -10,6 +12,7 @@ import static org.mockito.Mockito.when;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
+import me.deangrant.keycloak.magiclink.MagicLinkSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,6 +31,7 @@ import org.keycloak.services.managers.BruteForceProtector;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -184,5 +188,23 @@ class EmailOtpAuthenticatorTest {
     verify(context).forceChallenge(formResponse);
     verify(context, never()).success();
     verify(context, never()).failureChallenge(any(), any());
+  }
+
+  @Test
+  void smtpFailureShowsEmailSendErrorOnOtpForm() {
+    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH)).thenReturn(null);
+    when(user.getEmail()).thenReturn("alice@example.com");
+
+    try (MockedStatic<MagicLinkSupport> support =
+        mockStatic(MagicLinkSupport.class, CALLS_REAL_METHODS)) {
+      support.when(() -> MagicLinkSupport.sendOtpEmail(any(), any(), any())).thenReturn(false);
+      authenticator.authenticate(context);
+    }
+
+    verify(event).error(Errors.EMAIL_SEND_FAILED);
+    verify(context)
+        .failureChallenge(
+            eq(AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR), eq(formResponse));
+    verify(context, never()).challenge(any());
   }
 }
