@@ -109,7 +109,8 @@ public final class MagicLinkConfig {
   /**
    * Returns the configured token lifespan in seconds.
    *
-   * <p>Missing or non-numeric values fall back to {@link #DEFAULT_TOKEN_LIFESPAN_SECONDS}.
+   * <p>Missing, non-numeric, or non-positive values fall back to {@link
+   * #DEFAULT_TOKEN_LIFESPAN_SECONDS}.
    */
   public OptionalInt getTokenLifespan() {
     String value = raw.get(TOKEN_LIFESPAN_SECONDS);
@@ -117,7 +118,8 @@ public final class MagicLinkConfig {
       return OptionalInt.of(DEFAULT_TOKEN_LIFESPAN_SECONDS);
     }
     try {
-      return OptionalInt.of(Integer.parseInt(value.trim()));
+      int parsed = Integer.parseInt(value.trim());
+      return OptionalInt.of(parsed > 0 ? parsed : DEFAULT_TOKEN_LIFESPAN_SECONDS);
     } catch (NumberFormatException e) {
       return OptionalInt.of(DEFAULT_TOKEN_LIFESPAN_SECONDS);
     }

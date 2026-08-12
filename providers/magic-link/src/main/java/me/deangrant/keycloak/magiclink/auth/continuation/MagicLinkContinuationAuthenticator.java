@@ -290,7 +290,8 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
   private int getTimeoutMinutes(AuthenticationFlowContext context) {
     String value = configValue(context, TIMEOUT_MINUTES, String.valueOf(DEFAULT_TIMEOUT_MINUTES));
     try {
-      return Integer.parseInt(value.trim());
+      int parsed = Integer.parseInt(value.trim());
+      return parsed > 0 ? parsed : DEFAULT_TIMEOUT_MINUTES;
     } catch (NumberFormatException e) {
       return DEFAULT_TIMEOUT_MINUTES;
     }

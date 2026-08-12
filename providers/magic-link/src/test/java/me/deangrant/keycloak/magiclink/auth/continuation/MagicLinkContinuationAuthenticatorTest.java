@@ -1,5 +1,6 @@
 package me.deangrant.keycloak.magiclink.auth.continuation;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -12,8 +13,10 @@ import static org.mockito.Mockito.when;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
+import java.time.Duration;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.Map;
 import me.deangrant.keycloak.magiclink.MagicLinkSupport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +28,7 @@ import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
 import org.keycloak.forms.login.LoginFormsProvider;
 import org.keycloak.http.HttpRequest;
+import org.keycloak.models.AuthenticatorConfigModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
@@ -34,6 +38,7 @@ import org.keycloak.models.UserProvider;
 import org.keycloak.services.managers.AuthenticationManager;
 import org.keycloak.services.managers.BruteForceProtector;
 import org.keycloak.sessions.AuthenticationSessionModel;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -59,6 +64,7 @@ class MagicLinkContinuationAuthenticatorTest {
   @Mock private ClientModel client;
   @Mock private BruteForceProtector protector;
   @Mock private org.keycloak.models.AuthenticationExecutionModel execution;
+  @Mock private AuthenticatorConfigModel authenticatorConfig;
 
   @Test
   void completesWhenSessionConfirmed() {
@@ -365,5 +371,44 @@ class MagicLinkContinuationAuthenticatorTest {
 
     verify(forms).createForm("view-email-continuation.ftl");
     verify(context).challenge(formResponse);
+  }
+
+  @Test
+  void nonPositiveTimeoutMinutesFallsBackToDefault() {
+    MagicLinkContinuationAuthenticator authenticator = new MagicLinkContinuationAuthenticator();
+    when(context.getAuthenticationSession()).thenReturn(authSession);
+    when(context.getSession()).thenReturn(session);
+    when(context.getRealm()).thenReturn(realm);
+    when(context.getHttpRequest()).thenReturn(httpRequest);
+    when(context.getEvent()).thenReturn(event);
+    when(context.newEvent()).thenReturn(newEvent);
+    when(context.form()).thenReturn(forms);
+    when(context.getAuthenticatorConfig()).thenReturn(authenticatorConfig);
+    when(authenticatorConfig.getConfig())
+        .thenReturn(Map.of(MagicLinkContinuationAuthenticator.TIMEOUT_MINUTES, "0"));
+    when(authSession.getAuthNote(ContinuationNotes.SESSION_EXPIRATION)).thenReturn(null);
+    when(authSession.getAuthNote(ContinuationNotes.SESSION_CONFIRMED)).thenReturn(null);
+    when(session.users()).thenReturn(users);
+    when(realm.isLoginWithEmailAllowed()).thenReturn(true);
+    when(users.getUserByEmail(realm, "missing@example.com")).thenReturn(null);
+    when(users.getUserByUsername(realm, "missing@example.com")).thenReturn(null);
+    when(event.detail(any(), org.mockito.ArgumentMatchers.<String>any())).thenReturn(event);
+    when(event.event(any())).thenReturn(event);
+    when(forms.createForm("view-email-continuation.ftl")).thenReturn(formResponse);
+
+    MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
+    form.add(AuthenticationManager.FORM_USERNAME, "missing@example.com");
+    when(httpRequest.getDecodedFormParameters()).thenReturn(form);
+
+    ZonedDateTime before = ZonedDateTime.now(ZoneOffset.UTC);
+    authenticator.action(context);
+
+    ArgumentCaptor<String> expiration = ArgumentCaptor.forClass(String.class);
+    verify(authSession).setAuthNote(eq(ContinuationNotes.SESSION_EXPIRATION), expiration.capture());
+    ZonedDateTime expiry = ZonedDateTime.parse(expiration.getValue());
+    long seconds = Duration.between(before, expiry).getSeconds();
+    long expectedMin = MagicLinkContinuationAuthenticator.DEFAULT_TIMEOUT_MINUTES * 60L;
+    // beginWaitingSession adds plusSeconds(2); allow a few seconds of clock skew.
+    assertTrue(seconds >= expectedMin && seconds <= expectedMin + 10);
   }
 }

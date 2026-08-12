@@ -43,4 +43,16 @@ class MagicLinkConfigTest {
     assertEquals(
         OptionalInt.of(MagicLinkConfig.DEFAULT_TOKEN_LIFESPAN_SECONDS), config.getTokenLifespan());
   }
+
+  @Test
+  void nonPositiveLifespanFallsBackToDefault() {
+    assertEquals(
+        OptionalInt.of(MagicLinkConfig.DEFAULT_TOKEN_LIFESPAN_SECONDS),
+        new MagicLinkConfig(Map.of(MagicLinkConfig.TOKEN_LIFESPAN_SECONDS, "0"))
+            .getTokenLifespan());
+    assertEquals(
+        OptionalInt.of(MagicLinkConfig.DEFAULT_TOKEN_LIFESPAN_SECONDS),
+        new MagicLinkConfig(Map.of(MagicLinkConfig.TOKEN_LIFESPAN_SECONDS, "-1"))
+            .getTokenLifespan());
+  }
 }
