@@ -37,9 +37,6 @@ public final class MagicLinkSupport {
   /** {@code Details.REGISTER_METHOD} value when a user is created via magic link. */
   public static final String REGISTER_METHOD_MAGIC_LINK = "magic-link";
 
-  /** {@code Details.REGISTER_METHOD} value when a user is created via email OTP. */
-  public static final String REGISTER_METHOD_EMAIL_OTP = "email-otp";
-
   private MagicLinkSupport() {}
 
   /** Returns {@code null} when {@code value} is {@code null} or blank after trim. */
