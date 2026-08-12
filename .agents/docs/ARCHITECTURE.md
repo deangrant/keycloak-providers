@@ -141,7 +141,7 @@ Local checks (CI parity):
 mvn -B spotless:apply
 mvn -B verify -DskipTests
 mvn -B test
-mvn -B test -Dkeycloak.version=26.4.7
+mvn -B test -Dkeycloak.version=26.6.4
 ```
 
 `verify -DskipTests` runs Enforcer, Error Prone compile, and Spotless check.

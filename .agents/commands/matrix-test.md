@@ -6,11 +6,11 @@ Spot-check unit tests against more than one Keycloak version from the CI matrix.
 
 1. Read the default from root `pom.xml` (`keycloak.version`) and the matrix from `.github/workflows/test.yml`.
 
-2. Run tests for the POM default and one older matrix version (prefer the oldest listed, currently `26.4.7`):
+2. Run tests for the POM default and one older matrix version (prefer the oldest listed, currently `26.6.4`):
 
 ```bash
 mvn -B test -Dkeycloak.version=26.7.1
-mvn -B test -Dkeycloak.version=26.4.7
+mvn -B test -Dkeycloak.version=26.6.4
 ```
 
 Replace `26.7.1` with the current POM default if it differs.

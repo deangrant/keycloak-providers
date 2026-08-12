@@ -12,7 +12,7 @@ The attribute is an **advisory** operational signal—not a canonical audit trai
 | Registration | `META-INF/services/org.keycloak.events.EventListenerProviderFactory` |
 | Default attribute | `lastLoginTimestamp` (stringified epoch millis) |
 | Compile target | Keycloak `26.7.1` (`keycloak.version` in the root POM) |
-| CI-tested | `26.7.1`, `26.6.4`, `26.5.7`, `26.4.7` (see root [README](../../README.md)) |
+| CI-tested | `26.7.1`, `26.6.4` (see root [README](../../README.md)) |
 | Java | `21` |
 
 Keycloak SPI artifacts are Maven scope **`provided`**. Override the compile/test Keycloak version from the repo root with `-Dkeycloak.version=<version>`.
@@ -82,7 +82,7 @@ Unit tests only (JUnit 5 + Mockito)—helpers, factory/config/`ServiceLoader`, a
 ```bash
 mvn -B test -pl providers/last-login-timestamp -am
 # optional SPI version:
-mvn -B test -pl providers/last-login-timestamp -am -Dkeycloak.version=26.4.7
+mvn -B test -pl providers/last-login-timestamp -am -Dkeycloak.version=26.6.4
 ```
 
 ## Install

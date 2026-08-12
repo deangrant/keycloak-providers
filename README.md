@@ -17,8 +17,6 @@ CI recompiles and runs the **unit** suite (JUnit 5 + Mockito; no Testcontainers 
 
 - `26.7.1`
 - `26.6.4`
-- `26.5.7`
-- `26.4.7`
 
 Versions outside this set (including other majors) are unsupported unless added to the CI matrix. Override locally or in CI with:
 
