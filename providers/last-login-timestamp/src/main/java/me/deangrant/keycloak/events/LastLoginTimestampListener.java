@@ -3,6 +3,8 @@ package me.deangrant.keycloak.events;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Consumer;
 
 import org.jboss.logging.Logger;
@@ -22,13 +24,14 @@ import org.keycloak.utils.StringUtil;
  * Event listener that records each user's most recent login as a Unix epoch
  * timestamp.
  *
- * On {@link EventType#LOGIN}, queues the event and writes the event time
- * (milliseconds since epoch) to the user attribute configured by
+ * On {@link EventType#LOGIN}, queues the event and schedules a write of the
+ * event time (milliseconds since epoch) to the user attribute configured by
  * {@link LastLoginTimestampListenerFactory} after the login transaction
- * commits, in a separate transaction. A fixed striped lock table keyed by
- * realm/user serializes the read-compare-write on that node so only missing,
- * invalid, or strictly older stored values are replaced for concurrent logins
- * of the same user on that server. Distinct users may share a stripe briefly.
+ * commits. The write runs asynchronously on a background executor so the login
+ * HTTP response is not delayed. A fixed striped lock table keyed by realm/user
+ * serializes the read-compare-write on that node so only missing, invalid, or
+ * strictly older stored values are replaced for concurrent logins of the same
+ * user on that server. Distinct users may share a stripe briefly.
  *
  * This is a best-effort side effect. In a multi-node deployment, concurrent
  * logins routed to different nodes may still race at the database layer.
@@ -55,8 +58,9 @@ public class LastLoginTimestampListener implements EventListenerProvider {
     );
     private static final Object[] LOCK_STRIPES = createLockStripes(256);
 
-    private final KeycloakSession session;
+    private final KeycloakSessionFactory sessionFactory;
     private final String attributeName;
+    private final Executor executor;
     private final DeferredLoginTransaction tx = new DeferredLoginTransaction();
 
     private static Object[] createLockStripes(int count) {
@@ -66,13 +70,17 @@ public class LastLoginTimestampListener implements EventListenerProvider {
         }
         return stripes;
     }
+
     /**
-     * @param session        Keycloak session used for user lookup and attribute writes
+     * @param session        Keycloak session used to enlist the after-commit hook
      * @param attributeName  user attribute to store the last-login timestamp
+     * @param executor       background executor for after-commit attribute writes
      */
-    public LastLoginTimestampListener(KeycloakSession session, String attributeName) {
-        this.session = session;
+    public LastLoginTimestampListener(KeycloakSession session, String attributeName,
+            Executor executor) {
+        this.sessionFactory = session.getKeycloakSessionFactory();
         this.attributeName = attributeName;
+        this.executor = executor;
         session.getTransactionManager().enlistAfterCompletion(tx);
     }
 
@@ -93,7 +101,7 @@ public class LastLoginTimestampListener implements EventListenerProvider {
     }
 
     /**
-     * Persists the last-login timestamp after the login transaction commits.
+     * Persists the last-login timestamp in a background task.
      *
      * Acquires a striped lock for the realm/user pair and performs
      * read-compare-write in a single fresh transaction so same-user writes stay
@@ -112,7 +120,7 @@ public class LastLoginTimestampListener implements EventListenerProvider {
 
         try {
             synchronized (userLock(realmId, userId)) {
-                runInTransaction(session.getKeycloakSessionFactory(), s -> {
+                runInTransaction(sessionFactory, s -> {
                     RealmModel realm = s.realms().getRealm(realmId);
                     if (realm == null) {
                         return;
@@ -255,8 +263,8 @@ public class LastLoginTimestampListener implements EventListenerProvider {
     }
 
     /**
-     * Queues login events and processes them after the enclosing Keycloak
-     * transaction commits successfully.
+     * Queues login events and schedules background updates after the enclosing
+     * Keycloak transaction commits successfully.
      */
     private final class DeferredLoginTransaction extends AbstractKeycloakTransaction {
 
@@ -268,8 +276,14 @@ public class LastLoginTimestampListener implements EventListenerProvider {
 
         @Override
         protected void commitImpl() {
-            for (Event event : events) {
-                updateLastLoginTimestamp(event);
+            List<Event> pending = List.copyOf(events);
+            events.clear();
+            for (Event event : pending) {
+                try {
+                    executor.execute(() -> updateLastLoginTimestamp(event));
+                } catch (RejectedExecutionException e) {
+                    LOG.warn(formatEventWithError(event, e), e);
+                }
             }
         }
 

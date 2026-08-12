@@ -1,6 +1,10 @@
 package me.deangrant.keycloak.events;
 
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 import org.jboss.logging.Logger;
@@ -30,6 +34,10 @@ import org.keycloak.models.UserModel;
  *   {@code did}, {@code is_temporary_admin}). Invalid values are rejected with
  *   a WARN and the default {@code lastLoginTimestamp} is used instead.
  *
+ * After a successful login commit, attribute updates are scheduled on a small
+ * background thread pool so the login HTTP response is not delayed by the
+ * best-effort write.
+ *
  * Limitations:
  * - Attribute updates are best-effort and monotonic per Keycloak node, not
  *   cluster-wide.
@@ -51,6 +59,8 @@ public class LastLoginTimestampListenerFactory implements EventListenerProviderF
 
     /** Default user attribute name: {@code lastLoginTimestamp}. */
     private static final String DEFAULT_ATTRIBUTE_NAME = "lastLoginTimestamp";
+
+    private static final int EXECUTOR_THREADS = 4;
 
     /**
      * Allowed attribute name format: starts with a letter, then letters,
@@ -78,6 +88,9 @@ public class LastLoginTimestampListenerFactory implements EventListenerProviderF
     /** User attribute name; set in {@link #init(Config.Scope)} and passed to each listener. */
     private String attributeName = DEFAULT_ATTRIBUTE_NAME;
 
+    /** Background pool for after-commit attribute updates. */
+    private ExecutorService executor;
+
     /**
      * Creates a new listener instance for the given session.
      *
@@ -86,11 +99,12 @@ public class LastLoginTimestampListenerFactory implements EventListenerProviderF
      */
     @Override
     public EventListenerProvider create(KeycloakSession session) {
-        return new LastLoginTimestampListener(session, attributeName);
+        return new LastLoginTimestampListener(session, attributeName, executor);
     }
 
     /**
-     * Reads SPI configuration and sets the user attribute name.
+     * Reads SPI configuration, sets the user attribute name, and starts the
+     * background executor used for after-commit updates.
      *
      * Null or blank values fall back to {@code lastLoginTimestamp} silently. A
      * non-blank value that fails validation (see {@link #isValidAttributeName})
@@ -109,6 +123,7 @@ public class LastLoginTimestampListenerFactory implements EventListenerProviderF
             LOG.warnf("Invalid attribute-name \"%s\"; falling back to \"%s\"",
                     configured.trim(), DEFAULT_ATTRIBUTE_NAME);
         }
+        executor = Executors.newFixedThreadPool(EXECUTOR_THREADS, new DaemonThreadFactory());
     }
 
     /**
@@ -142,9 +157,12 @@ public class LastLoginTimestampListenerFactory implements EventListenerProviderF
     public void postInit(KeycloakSessionFactory factory) {
     }
 
-    /** No resources to release. */
+    /** Shuts down the background executor. */
     @Override
     public void close() {
+        if (executor != null) {
+            executor.shutdown();
+        }
     }
 
     /**
@@ -155,5 +173,18 @@ public class LastLoginTimestampListenerFactory implements EventListenerProviderF
     @Override
     public String getId() {
         return PROVIDER_ID;
+    }
+
+    private static final class DaemonThreadFactory implements ThreadFactory {
+
+        private final AtomicInteger sequence = new AtomicInteger();
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable,
+                    "last-login-timestamp-" + sequence.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        }
     }
 }
