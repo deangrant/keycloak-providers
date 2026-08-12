@@ -17,10 +17,12 @@ import org.keycloak.authentication.AuthenticationFlowError;
 import org.keycloak.authentication.authenticators.browser.AbstractUsernameFormAuthenticator;
 import org.keycloak.authentication.authenticators.browser.UsernamePasswordForm;
 import org.keycloak.events.Errors;
+import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
 import org.keycloak.forms.login.LoginFormsProvider;
 import org.keycloak.models.AuthenticatorConfigModel;
 import org.keycloak.models.UserModel;
+import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.services.managers.AuthenticationManager;
 import org.keycloak.services.managers.AuthenticationSessionManager;
@@ -225,12 +227,30 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
   }
 
   private void completeSuccess(AuthenticationFlowContext context) {
-    String attemptedUsername = MagicLinkSupport.getAttemptedUsername(context);
-    UserModel user;
-    if (MagicLinkSupport.isValidEmail(attemptedUsername)) {
-      user = context.getSession().users().getUserByEmail(context.getRealm(), attemptedUsername);
-    } else {
-      user = context.getSession().users().getUserByUsername(context.getRealm(), attemptedUsername);
+    UserModel user = context.getUser();
+    if (user == null) {
+      user = context.getAuthenticationSession().getAuthenticatedUser();
+    }
+    if (user == null) {
+      String attemptedUsername = MagicLinkSupport.getAttemptedUsername(context);
+      if (attemptedUsername != null) {
+        user =
+            KeycloakModelUtils.findUserByNameOrEmail(
+                context.getSession(), context.getRealm(), attemptedUsername);
+      }
+    }
+    if (user == null) {
+      LOG.warn("Continuation confirmed but user could not be resolved");
+      String attemptedUsername = MagicLinkSupport.getAttemptedUsername(context);
+      EventBuilder event = context.getEvent().event(EventType.LOGIN_ERROR);
+      if (attemptedUsername != null) {
+        event.detail(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, attemptedUsername);
+      }
+      event.error(Errors.USER_NOT_FOUND);
+      Response challengeResponse =
+          challenge(context, getDefaultChallengeMessage(context), FIELD_USERNAME);
+      context.failureChallenge(AuthenticationFlowError.INVALID_USER, challengeResponse);
+      return;
     }
     context.setUser(user);
     context.getAuthenticationSession().setAuthenticatedUser(user);

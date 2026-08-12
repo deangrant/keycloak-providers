@@ -66,12 +66,75 @@ class MagicLinkContinuationAuthenticatorTest {
     when(context.getAuthenticationSession()).thenReturn(authSession);
     when(context.getSession()).thenReturn(session);
     when(context.getRealm()).thenReturn(realm);
+    when(context.getUser()).thenReturn(null);
+    when(authSession.getAuthenticatedUser()).thenReturn(null);
     when(authSession.getAuthNote(ContinuationNotes.SESSION_EXPIRATION)).thenReturn(null);
     when(authSession.getAuthNote(ContinuationNotes.SESSION_CONFIRMED)).thenReturn("true");
     when(authSession.getAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME))
         .thenReturn("alice@example.com");
     when(session.users()).thenReturn(users);
+    when(realm.isLoginWithEmailAllowed()).thenReturn(true);
     when(users.getUserByEmail(realm, "alice@example.com")).thenReturn(user);
+
+    authenticator.authenticate(context);
+
+    verify(context).setUser(user);
+    verify(authSession).setAuthenticatedUser(user);
+    verify(context).success();
+  }
+
+  @Test
+  void confirmedWithoutResolvableUserDoesNotSucceed() {
+    MagicLinkContinuationAuthenticator authenticator = new MagicLinkContinuationAuthenticator();
+    when(context.getAuthenticationSession()).thenReturn(authSession);
+    when(context.getSession()).thenReturn(session);
+    when(context.getRealm()).thenReturn(realm);
+    when(context.getEvent()).thenReturn(event);
+    when(context.getUser()).thenReturn(null);
+    when(context.form()).thenReturn(forms);
+    when(context.getExecution()).thenReturn(execution);
+    when(execution.getId()).thenReturn("exec-1");
+    when(authSession.getAuthenticatedUser()).thenReturn(null);
+    when(authSession.getAuthNote(ContinuationNotes.SESSION_EXPIRATION)).thenReturn(null);
+    when(authSession.getAuthNote(ContinuationNotes.SESSION_CONFIRMED)).thenReturn("true");
+    when(authSession.getAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME))
+        .thenReturn("missing@example.com");
+    when(session.users()).thenReturn(users);
+    when(realm.isLoginWithEmailAllowed()).thenReturn(true);
+    when(users.getUserByEmail(realm, "missing@example.com")).thenReturn(null);
+    when(users.getUserByUsername(realm, "missing@example.com")).thenReturn(null);
+    when(event.event(any())).thenReturn(event);
+    when(event.detail(any(), org.mockito.ArgumentMatchers.<String>any())).thenReturn(event);
+    when(forms.createLoginUsername()).thenReturn(formResponse);
+    when(forms.setExecution(any())).thenReturn(forms);
+    when(forms.setError(any(), any())).thenReturn(forms);
+    when(forms.setError(any())).thenReturn(forms);
+    when(forms.addError(any())).thenReturn(forms);
+
+    authenticator.authenticate(context);
+
+    verify(event).error(Errors.USER_NOT_FOUND);
+    verify(context).failureChallenge(eq(AuthenticationFlowError.INVALID_USER), eq(formResponse));
+    verify(context, never()).success();
+    verify(context, never()).setUser(any());
+  }
+
+  @Test
+  void completesWhenUserFoundByUsernameOnly() {
+    MagicLinkContinuationAuthenticator authenticator = new MagicLinkContinuationAuthenticator();
+    when(context.getAuthenticationSession()).thenReturn(authSession);
+    when(context.getSession()).thenReturn(session);
+    when(context.getRealm()).thenReturn(realm);
+    when(context.getUser()).thenReturn(null);
+    when(authSession.getAuthenticatedUser()).thenReturn(null);
+    when(authSession.getAuthNote(ContinuationNotes.SESSION_EXPIRATION)).thenReturn(null);
+    when(authSession.getAuthNote(ContinuationNotes.SESSION_CONFIRMED)).thenReturn("true");
+    when(authSession.getAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME))
+        .thenReturn("alice@example.com");
+    when(session.users()).thenReturn(users);
+    when(realm.isLoginWithEmailAllowed()).thenReturn(true);
+    when(users.getUserByEmail(realm, "alice@example.com")).thenReturn(null);
+    when(users.getUserByUsername(realm, "alice@example.com")).thenReturn(user);
 
     authenticator.authenticate(context);
 
