@@ -2,8 +2,7 @@ package me.deangrant.keycloak.events;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 import org.jboss.logging.Logger;
@@ -26,10 +25,10 @@ import org.keycloak.utils.StringUtil;
  * On {@link EventType#LOGIN}, queues the event and writes the event time
  * (milliseconds since epoch) to the user attribute configured by
  * {@link LastLoginTimestampListenerFactory} after the login transaction
- * commits, in a separate transaction. A per-user lock serializes the
- * read-compare-write on that node so only missing, invalid, or strictly older
- * stored values are replaced for concurrent logins of the same user on that
- * server.
+ * commits, in a separate transaction. A fixed striped lock table keyed by
+ * realm/user serializes the read-compare-write on that node so only missing,
+ * invalid, or strictly older stored values are replaced for concurrent logins
+ * of the same user on that server. Distinct users may share a stripe briefly.
  *
  * This is a best-effort side effect. In a multi-node deployment, concurrent
  * logins routed to different nodes may still race at the database layer.
@@ -54,12 +53,19 @@ public class LastLoginTimestampListener implements EventListenerProvider {
             Details.AUTH_METHOD,
             Details.IDENTITY_PROVIDER
     );
-    private static final Map<String, Object> USER_LOCKS = new ConcurrentHashMap<>();
+    private static final Object[] LOCK_STRIPES = createLockStripes(256);
 
     private final KeycloakSession session;
     private final String attributeName;
     private final DeferredLoginTransaction tx = new DeferredLoginTransaction();
 
+    private static Object[] createLockStripes(int count) {
+        Object[] stripes = new Object[count];
+        for (int i = 0; i < count; i++) {
+            stripes[i] = new Object();
+        }
+        return stripes;
+    }
     /**
      * @param session        Keycloak session used for user lookup and attribute writes
      * @param attributeName  user attribute to store the last-login timestamp
@@ -89,8 +95,8 @@ public class LastLoginTimestampListener implements EventListenerProvider {
     /**
      * Persists the last-login timestamp after the login transaction commits.
      *
-     * Acquires a per-user lock and performs read-compare-write in a single fresh
-     * transaction so unrelated users never contend, same-user writes stay
+     * Acquires a striped lock for the realm/user pair and performs
+     * read-compare-write in a single fresh transaction so same-user writes stay
      * serialized on this node, and write failures cannot roll back
      * authentication. The stored value is replaced only when it is missing,
      * invalid, or strictly older than the event time. Cross-node monotonicity
@@ -145,14 +151,20 @@ public class LastLoginTimestampListener implements EventListenerProvider {
     }
 
     /**
-     * Returns the per-user lock for a realm/user pair.
+     * Returns the striped lock for a realm/user pair.
      *
      * @param realmId the realm identifier
      * @param userId  the user identifier
-     * @return a dedicated lock object serializing updates for that user
+     * @return a lock stripe shared by keys that hash to the same index
      */
-    private static Object userLock(String realmId, String userId) {
-        return USER_LOCKS.computeIfAbsent(realmId + ':' + userId, k -> new Object());
+    static Object userLock(String realmId, String userId) {
+        int hash = Objects.hash(realmId, userId);
+        return LOCK_STRIPES[hash & (LOCK_STRIPES.length - 1)];
+    }
+
+    /** Returns the fixed number of lock stripes. */
+    static int lockStripeCount() {
+        return LOCK_STRIPES.length;
     }
 
     /**
