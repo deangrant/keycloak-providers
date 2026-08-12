@@ -159,10 +159,9 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
           .detail(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, email)
           .event(EventType.LOGIN_ERROR)
           .error(Errors.INVALID_EMAIL);
-      context
-          .getAuthenticationSession()
-          .setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, email);
-      context.forceChallenge(context.form().createForm("view-email.ftl"));
+      // Avoid account enumeration: same waiting page and session notes as a successful send.
+      beginWaitingSession(context, email);
+      context.forceChallenge(context.form().createForm("view-email-continuation.ftl"));
       return;
     }
 
@@ -181,6 +180,16 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
     boolean sent = MagicLinkSupport.sendContinuationEmail(context.getSession(), user, link);
     LOG.debugf("Continuation magic link email to %s sent=%s", user.getEmail(), sent);
 
+    beginWaitingSession(context, email);
+    context.challenge(context.form().createForm("view-email-continuation.ftl"));
+  }
+
+  /**
+   * Marks the authentication session as waiting for continuation confirmation so polls use the same
+   * path for known and unknown emails.
+   */
+  private void beginWaitingSession(AuthenticationFlowContext context, String email) {
+    int timeoutMinutes = getTimeoutMinutes(context);
     context
         .getAuthenticationSession()
         .setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, email);
@@ -193,8 +202,6 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
                 .plusMinutes(timeoutMinutes)
                 .plusSeconds(2)
                 .toString());
-
-    context.challenge(context.form().createForm("view-email-continuation.ftl"));
   }
 
   private void completeSuccess(AuthenticationFlowContext context) {
