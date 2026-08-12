@@ -14,7 +14,6 @@ import org.keycloak.events.EventType;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
-import org.keycloak.protocol.oidc.utils.OIDCResponseMode;
 import org.keycloak.protocol.oidc.utils.RedirectUtils;
 import org.keycloak.services.ErrorPage;
 import org.keycloak.services.managers.AuthenticationManager;
@@ -137,9 +136,9 @@ public final class MagicLinkActionTokenHandler
       authSession.removeAuthNote(Details.REMEMBER_ME);
     }
 
-    if (OIDCResponseMode.FRAGMENT.value().equals(token.getResponseMode())) {
-      authSession.setClientNote(
-          OIDCLoginProtocol.RESPONSE_MODE_PARAM, OIDCResponseMode.FRAGMENT.value());
+    String responseMode = MagicLinkSupport.trimToNull(token.getResponseMode());
+    if (responseMode != null) {
+      authSession.setClientNote(OIDCLoginProtocol.RESPONSE_MODE_PARAM, responseMode);
     }
 
     user.setEmailVerified(true);

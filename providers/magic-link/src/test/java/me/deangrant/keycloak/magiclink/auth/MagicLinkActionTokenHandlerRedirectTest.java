@@ -110,6 +110,7 @@ class MagicLinkActionTokenHandlerRedirectTest {
   void handleTokenSetsRedirectNotesWhenVerificationSucceeds() {
     when(token.getRedirectUri()).thenReturn("https://app.example/callback");
     when(token.getState()).thenReturn("state-1");
+    when(token.getResponseMode()).thenReturn("query");
 
     try (MockedStatic<MagicLinkSupport> support =
             mockStatic(MagicLinkSupport.class, CALLS_REAL_METHODS);
@@ -143,8 +144,42 @@ class MagicLinkActionTokenHandlerRedirectTest {
       verify(authSession)
           .setClientNote(OIDCLoginProtocol.REDIRECT_URI_PARAM, "https://app.example/callback");
       verify(authSession).setClientNote(OIDCLoginProtocol.STATE_PARAM, "state-1");
+      verify(authSession).setClientNote(OIDCLoginProtocol.RESPONSE_MODE_PARAM, "query");
       verify(user).setEmailVerified(true);
       verify(event, never()).error(eq(Errors.INVALID_REDIRECT_URI));
+    }
+  }
+
+  @Test
+  void handleTokenSkipsBlankResponseMode() {
+    when(token.getRedirectUri()).thenReturn("https://app.example/callback");
+    when(token.getResponseMode()).thenReturn("  ");
+
+    try (MockedStatic<MagicLinkSupport> support =
+            mockStatic(MagicLinkSupport.class, CALLS_REAL_METHODS);
+        MockedStatic<RedirectUtils> redirects = mockStatic(RedirectUtils.class);
+        MockedStatic<AuthenticationManager> authManager = mockStatic(AuthenticationManager.class)) {
+      support
+          .when(() -> MagicLinkSupport.resolveClient(session, realm, authSession, "account"))
+          .thenReturn(client);
+      redirects
+          .when(
+              () ->
+                  RedirectUtils.verifyRedirectUri(session, "https://app.example/callback", client))
+          .thenReturn("https://app.example/callback");
+      authManager
+          .when(
+              () -> AuthenticationManager.nextRequiredAction(session, authSession, request, event))
+          .thenReturn(null);
+      authManager
+          .when(
+              () ->
+                  AuthenticationManager.redirectToRequiredActions(
+                      session, realm, authSession, null, null))
+          .thenReturn(successResponse);
+
+      assertSame(successResponse, handler.handleToken(token, tokenContext));
+      verify(authSession, never()).setClientNote(eq(OIDCLoginProtocol.RESPONSE_MODE_PARAM), any());
     }
   }
 }
