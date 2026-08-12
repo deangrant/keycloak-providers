@@ -50,7 +50,7 @@ Browser forms
 └── Email OTP              [REQUIRED]
 ```
 
-Optional config: **OTP lifespan (seconds)** (default `300`), **OTP max attempts** (default `5`).
+Optional config: **OTP lifespan (seconds)** (default `300`), **OTP max attempts** (default `5`), **OTP resend cooldown (seconds)** (default `30`), **OTP max sends** (default `5`).
 
 ## Email and login templates
 
@@ -104,6 +104,7 @@ Depend on this module from another Keycloak extension:
 - The Continuation click device uses its own authentication session; only the original waiting session is marked confirmed (the click device does not join that session).
 - Email OTP stores a per-code salt and HMAC-SHA256 digest in the authentication session (not the plaintext code).
 - Email OTP invalidates the current code after too many wrong guesses (`otpMaxAttempts`, default 5); the user must resend for a new code and attempt budget.
+- Email OTP resend is limited by cooldown (`otpResendCooldownSeconds`, default 30) and a per-session send budget (`otpMaxSends`, default 5, including the first email).
 - Enable realm **Brute force detection** for account-level lockout across sessions/IPs; Email OTP respects those lockouts when enabled.
 - Compile/runtime APIs come from Keycloak (`keycloak-services` is `provided`); do not shade Keycloak into the JAR.
 - Supported Keycloak versions match the repository matrix (see root README).
@@ -114,4 +115,4 @@ Depend on this module from another Keycloak extension:
 |-------------|-------------|
 | `magic-link` | `forceCreate`, `updateProfile`, `updatePassword`, `tokenLifespanSeconds` |
 | `magic-link-continuation` | `forceCreate`, `timeoutMinutes` |
-| `email-otp` | `otpTtlSeconds`, `otpMaxAttempts` |
+| `email-otp` | `otpTtlSeconds`, `otpMaxAttempts`, `otpResendCooldownSeconds`, `otpMaxSends` |

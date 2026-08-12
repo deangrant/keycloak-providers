@@ -35,8 +35,10 @@ import org.keycloak.services.messages.Messages;
  * Emails a 6-digit OTP and validates it. Intended after a Username Form (or any step that
  * identifies the user).
  *
- * <p>Wrong guesses are limited per emailed code ({@code otpMaxAttempts}, default 5). When realm
- * brute-force detection is enabled, locked users are refused before send or validate.
+ * <p>Wrong guesses are limited per emailed code ({@code otpMaxAttempts}, default 5). Resends are
+ * limited by cooldown ({@code otpResendCooldownSeconds}, default 30) and a per-session send budget
+ * ({@code otpMaxSends}, default 5). When realm brute-force detection is enabled, locked users are
+ * refused before send or validate.
  */
 public final class EmailOtpAuthenticator implements Authenticator {
 
@@ -54,8 +56,20 @@ public final class EmailOtpAuthenticator implements Authenticator {
   /** Auth-session note counting wrong OTP submissions for the current code. */
   public static final String AUTH_NOTE_OTP_ATTEMPTS = "email-otp-attempts";
 
+  /** Auth-session note storing epoch seconds of the last successful OTP email. */
+  public static final String AUTH_NOTE_OTP_LAST_SENT = "email-otp-last-sent";
+
+  /** Auth-session note counting successful OTP emails in this authentication session. */
+  public static final String AUTH_NOTE_OTP_SEND_COUNT = "email-otp-send-count";
+
   /** HTML form field name for the submitted OTP code. */
   public static final String FORM_PARAM_OTP = "otp";
+
+  /** Theme message key when resend is blocked by cooldown. */
+  public static final String MSG_RESEND_COOLDOWN = "otpFormResendCooldown";
+
+  /** Theme message key when resend is blocked by the per-session send budget. */
+  public static final String MSG_RESEND_LIMIT = "otpFormResendLimit";
 
   /** Authenticator config key for OTP lifespan in seconds. */
   public static final String TTL_SECONDS = "otpTtlSeconds";
@@ -63,8 +77,16 @@ public final class EmailOtpAuthenticator implements Authenticator {
   /** Authenticator config key for max wrong guesses per emailed code. */
   public static final String MAX_ATTEMPTS = "otpMaxAttempts";
 
+  /** Authenticator config key for minimum seconds between successful OTP emails. */
+  public static final String RESEND_COOLDOWN_SECONDS = "otpResendCooldownSeconds";
+
+  /** Authenticator config key for max successful OTP emails per authentication session. */
+  public static final String MAX_SENDS = "otpMaxSends";
+
   public static final int DEFAULT_TTL_SECONDS = 5 * 60;
   public static final int DEFAULT_MAX_ATTEMPTS = 5;
+  public static final int DEFAULT_RESEND_COOLDOWN_SECONDS = 30;
+  public static final int DEFAULT_MAX_SENDS = 5;
   public static final int OTP_LENGTH = 6;
   public static final int OTP_SALT_BYTES = 16;
 
@@ -90,9 +112,29 @@ public final class EmailOtpAuthenticator implements Authenticator {
     maxAttempts.setType(ProviderConfigProperty.STRING_TYPE);
     maxAttempts.setDefaultValue(String.valueOf(DEFAULT_MAX_ATTEMPTS));
 
+    ProviderConfigProperty cooldown = new ProviderConfigProperty();
+    cooldown.setName(RESEND_COOLDOWN_SECONDS);
+    cooldown.setLabel("OTP resend cooldown (seconds)");
+    cooldown.setHelpText(
+        "Minimum seconds between successful OTP emails. Default is 30. Resend during the cooldown"
+            + " keeps the current code and shows an error.");
+    cooldown.setType(ProviderConfigProperty.STRING_TYPE);
+    cooldown.setDefaultValue(String.valueOf(DEFAULT_RESEND_COOLDOWN_SECONDS));
+
+    ProviderConfigProperty maxSends = new ProviderConfigProperty();
+    maxSends.setName(MAX_SENDS);
+    maxSends.setLabel("OTP max sends");
+    maxSends.setHelpText(
+        "Maximum successful OTP emails allowed in one authentication session (including the"
+            + " first). Default is 5.");
+    maxSends.setType(ProviderConfigProperty.STRING_TYPE);
+    maxSends.setDefaultValue(String.valueOf(DEFAULT_MAX_SENDS));
+
     List<ProviderConfigProperty> props = new ArrayList<>();
     props.add(ttl);
     props.add(maxAttempts);
+    props.add(cooldown);
+    props.add(maxSends);
     CONFIG_PROPERTIES = Collections.unmodifiableList(props);
   }
 
@@ -116,17 +158,12 @@ public final class EmailOtpAuthenticator implements Authenticator {
 
     MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
     if (formData.containsKey("resend")) {
-      clearOtpNotes(context);
-      if (!sendOtpIfNeeded(context)) {
-        challengeEmailSendFailed(context);
-        return;
-      }
-      context.challenge(otpForm(context, null));
+      handleResend(context);
       return;
     }
 
     int maxAttempts = maxAttempts(context);
-    int attempts = readAttempts(context);
+    int attempts = readIntNote(context, AUTH_NOTE_OTP_ATTEMPTS);
     if (attempts >= maxAttempts) {
       clearOtpNotes(context);
       context
@@ -205,6 +242,27 @@ public final class EmailOtpAuthenticator implements Authenticator {
         otpForm(context, new FormMessage(Messages.INVALID_ACCESS_CODE)));
   }
 
+  private void handleResend(AuthenticationFlowContext context) {
+    int sendCount = readIntNote(context, AUTH_NOTE_OTP_SEND_COUNT);
+    if (sendCount >= maxSends(context)) {
+      context.challenge(otpForm(context, new FormMessage(FORM_PARAM_OTP, MSG_RESEND_LIMIT)));
+      return;
+    }
+
+    int lastSent = readIntNote(context, AUTH_NOTE_OTP_LAST_SENT);
+    if (lastSent > 0 && Time.currentTime() < lastSent + resendCooldownSeconds(context)) {
+      context.challenge(otpForm(context, new FormMessage(FORM_PARAM_OTP, MSG_RESEND_COOLDOWN)));
+      return;
+    }
+
+    clearOtpNotes(context);
+    if (!sendOtpIfNeeded(context)) {
+      challengeEmailSendFailed(context);
+      return;
+    }
+    context.challenge(otpForm(context, null));
+  }
+
   /**
    * Returns {@code true} when the user is locked by realm brute-force detection and a lockout
    * challenge has already been set.
@@ -270,6 +328,13 @@ public final class EmailOtpAuthenticator implements Authenticator {
           .setAuthNote(
               AUTH_NOTE_OTP_EXPIRY, String.valueOf(Time.currentTime() + ttlSeconds(context)));
       context.getAuthenticationSession().removeAuthNote(AUTH_NOTE_OTP_ATTEMPTS);
+      int nextSendCount = readIntNote(context, AUTH_NOTE_OTP_SEND_COUNT) + 1;
+      context
+          .getAuthenticationSession()
+          .setAuthNote(AUTH_NOTE_OTP_SEND_COUNT, String.valueOf(nextSendCount));
+      context
+          .getAuthenticationSession()
+          .setAuthNote(AUTH_NOTE_OTP_LAST_SENT, String.valueOf(Time.currentTime()));
       LOG.debugf("Sent email OTP to %s", user.getEmail());
       return true;
     }
@@ -284,8 +349,8 @@ public final class EmailOtpAuthenticator implements Authenticator {
     context.getAuthenticationSession().removeAuthNote(AUTH_NOTE_OTP_ATTEMPTS);
   }
 
-  private int readAttempts(AuthenticationFlowContext context) {
-    String raw = context.getAuthenticationSession().getAuthNote(AUTH_NOTE_OTP_ATTEMPTS);
+  private int readIntNote(AuthenticationFlowContext context, String note) {
+    String raw = context.getAuthenticationSession().getAuthNote(note);
     if (raw == null || raw.isBlank()) {
       return 0;
     }
@@ -310,6 +375,14 @@ public final class EmailOtpAuthenticator implements Authenticator {
 
   private int maxAttempts(AuthenticationFlowContext context) {
     return intConfig(context, MAX_ATTEMPTS, DEFAULT_MAX_ATTEMPTS);
+  }
+
+  private int resendCooldownSeconds(AuthenticationFlowContext context) {
+    return intConfig(context, RESEND_COOLDOWN_SECONDS, DEFAULT_RESEND_COOLDOWN_SECONDS);
+  }
+
+  private int maxSends(AuthenticationFlowContext context) {
+    return intConfig(context, MAX_SENDS, DEFAULT_MAX_SENDS);
   }
 
   private static int intConfig(AuthenticationFlowContext context, String key, int defaultValue) {

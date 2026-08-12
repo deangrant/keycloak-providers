@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -15,6 +16,7 @@ import static org.mockito.Mockito.when;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
+import java.util.concurrent.atomic.AtomicReference;
 import me.deangrant.keycloak.magiclink.MagicLinkSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,6 +32,7 @@ import org.keycloak.models.AuthenticationExecutionModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
+import org.keycloak.models.utils.FormMessage;
 import org.keycloak.services.managers.BruteForceProtector;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.mockito.ArgumentCaptor;
@@ -248,6 +251,88 @@ class EmailOtpAuthenticatorTest {
     assertFalse(EmailOtpAuthenticator.otpMatches(code, null, hashHex));
     assertFalse(EmailOtpAuthenticator.otpMatches(code, saltHex, null));
     assertFalse(EmailOtpAuthenticator.otpMatches(null, saltHex, hashHex));
+  }
+
+  @Test
+  void resendWithinCooldownKeepsCodeAndDoesNotSend() {
+    stubPendingOtp("123456");
+    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_SEND_COUNT)).thenReturn("1");
+    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_LAST_SENT))
+        .thenReturn(String.valueOf(Time.currentTime()));
+    MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
+    form.add("resend", "true");
+    when(httpRequest.getDecodedFormParameters()).thenReturn(form);
+
+    try (MockedStatic<MagicLinkSupport> support =
+        mockStatic(MagicLinkSupport.class, CALLS_REAL_METHODS)) {
+      authenticator.action(context);
+      support.verify(() -> MagicLinkSupport.sendOtpEmail(any(), any(), any()), never());
+    }
+
+    verify(authSession, never()).removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH);
+    ArgumentCaptor<java.util.List<FormMessage>> errors =
+        ArgumentCaptor.forClass(java.util.List.class);
+    verify(forms).setErrors(errors.capture());
+    assertEquals(EmailOtpAuthenticator.MSG_RESEND_COOLDOWN, errors.getValue().get(0).getMessage());
+    verify(context).challenge(formResponse);
+  }
+
+  @Test
+  void resendAtMaxSendsKeepsCodeAndDoesNotSend() {
+    stubPendingOtp("123456");
+    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_SEND_COUNT)).thenReturn("5");
+    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_LAST_SENT))
+        .thenReturn(String.valueOf(Time.currentTime() - 120));
+    MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
+    form.add("resend", "true");
+    when(httpRequest.getDecodedFormParameters()).thenReturn(form);
+
+    try (MockedStatic<MagicLinkSupport> support =
+        mockStatic(MagicLinkSupport.class, CALLS_REAL_METHODS)) {
+      authenticator.action(context);
+      support.verify(() -> MagicLinkSupport.sendOtpEmail(any(), any(), any()), never());
+    }
+
+    verify(authSession, never()).removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH);
+    ArgumentCaptor<java.util.List<FormMessage>> errors =
+        ArgumentCaptor.forClass(java.util.List.class);
+    verify(forms).setErrors(errors.capture());
+    assertEquals(EmailOtpAuthenticator.MSG_RESEND_LIMIT, errors.getValue().get(0).getMessage());
+    verify(context).challenge(formResponse);
+  }
+
+  @Test
+  void resendAfterCooldownSendsNewCode() {
+    AtomicReference<String> hashNote = new AtomicReference<>("pending-hash");
+    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH))
+        .thenAnswer(invocation -> hashNote.get());
+    doAnswer(
+            invocation -> {
+              hashNote.set(null);
+              return null;
+            })
+        .when(authSession)
+        .removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH);
+    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_SEND_COUNT)).thenReturn("1");
+    when(authSession.getAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_LAST_SENT))
+        .thenReturn(String.valueOf(Time.currentTime() - 60));
+    when(user.getEmail()).thenReturn("alice@example.com");
+    MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
+    form.add("resend", "true");
+    when(httpRequest.getDecodedFormParameters()).thenReturn(form);
+
+    try (MockedStatic<MagicLinkSupport> support =
+        mockStatic(MagicLinkSupport.class, CALLS_REAL_METHODS)) {
+      support.when(() -> MagicLinkSupport.sendOtpEmail(any(), any(), any())).thenReturn(true);
+      authenticator.action(context);
+      support.verify(() -> MagicLinkSupport.sendOtpEmail(eq(session), eq(user), any()));
+    }
+
+    verify(authSession).removeAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH);
+    verify(authSession).setAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_SEND_COUNT, "2");
+    verify(authSession).setAuthNote(eq(EmailOtpAuthenticator.AUTH_NOTE_OTP_LAST_SENT), any());
+    verify(authSession).setAuthNote(eq(EmailOtpAuthenticator.AUTH_NOTE_OTP_HASH), any());
+    verify(context).challenge(formResponse);
   }
 
   private void stubPendingOtp(String code) {
