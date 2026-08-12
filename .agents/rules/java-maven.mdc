@@ -1,0 +1,15 @@
+---
+description: Java 21 and Maven build/lint conventions
+globs: "**/*.{java,xml}"
+alwaysApply: false
+---
+
+# Java and Maven
+
+- Target Java 21 (`maven.compiler.release` 21). Do not lower the language level.
+- Format Java with Spotless Google Java Format. After meaningful Java edits, run `mvn -B spotless:apply` before finishing.
+- After meaningful code or POM changes, verify with:
+  - `mvn -B verify -DskipTests` (Enforcer, Error Prone compile, Spotless check)
+  - `mvn -B test` (optionally `-Dkeycloak.version=<version>`)
+- Keep module structure: root aggregator POM + `providers/<name>/` modules.
+- Do not add Keycloak-version Maven profiles; override with `-Dkeycloak.version` only.

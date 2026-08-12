@@ -1,0 +1,11 @@
+---
+description: Keep README Keycloak support lists in sync with CI and POM
+globs: "**/README.md,providers/**/README.md"
+alwaysApply: false
+---
+
+# Documentation sync
+
+- Root `README.md` and each provider README must list the same supported Keycloak versions as `.github/workflows/test.yml` matrix and the root POM `keycloak.version` default.
+- When documenting listener behavior, keep Limitations and Overview aligned with code: LOGIN-only, async after-commit, best-effort WARN failures, advisory (non-audit) semantics.
+- Do not claim support for Keycloak versions outside the CI matrix unless those versions are added to the matrix and docs together.

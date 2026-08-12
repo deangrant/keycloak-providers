@@ -1,0 +1,13 @@
+---
+description: Keycloak SPI provider constraints for this repo
+alwaysApply: true
+---
+
+# Keycloak SPI
+
+- Compile against Keycloak SPI artifacts with Maven `provided` scope. Do not bundle Keycloak into provider JARs.
+- Prefer public Keycloak session/event APIs. Do not introduce private Keycloak helper utilities beyond the `eventsListener` SPI contract already in use.
+- Keep `${keycloak.version}` in the root POM as the single version override point. Do not invent Maven profiles per Keycloak version; use `-Dkeycloak.version=<version>`.
+- For `last-login-timestamp`: listen to `EventType.LOGIN` only unless docs and tests are updated intentionally for a broader contract.
+- Treat last-login attribute writes as advisory, best-effort, and non-blocking for authentication. Preserve WARN-only failure logging on the update path.
+- When changing supported Keycloak versions, keep root POM default, CI matrix, and both READMEs aligned.

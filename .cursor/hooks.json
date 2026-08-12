@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": ".agents/hooks/block-destructive-git.sh",
+        "matcher": "git\\s+(push|reset)",
+        "failClosed": false
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": ".agents/hooks/spotless-nudge.sh",
+        "failClosed": false
+      }
+    ]
+  }
+}
