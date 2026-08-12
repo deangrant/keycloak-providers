@@ -24,9 +24,11 @@ import org.keycloak.models.UserModel;
  * - Override attribute name:
  *   {@code --spi-events-listener--last-login-timestamp--attribute-name=...}
  *   The value must match {@code ^[a-zA-Z][a-zA-Z0-9_]{0,63}$} and must not be a
- *   reserved user attribute ({@code username}, {@code email}, {@code firstName},
- *   {@code lastName}, {@code locale}). Invalid values are rejected with a WARN
- *   and the default {@code lastLoginTimestamp} is used instead.
+ *   reserved user attribute ({@code id}, {@code username}, {@code email},
+ *   {@code firstName}, {@code lastName}, {@code emailVerified}, {@code enabled},
+ *   {@code locale}, {@code createdTimestamp}, {@code disabledReason},
+ *   {@code did}, {@code is_temporary_admin}). Invalid values are rejected with
+ *   a WARN and the default {@code lastLoginTimestamp} is used instead.
  *
  * Limitations:
  * - Attribute updates are best-effort and monotonic per Keycloak node, not
@@ -59,11 +61,18 @@ public class LastLoginTimestampListenerFactory implements EventListenerProviderF
 
     /** Reserved user attribute names that must not be overwritten. */
     private static final Set<String> RESERVED_ATTRIBUTE_NAMES = Set.of(
+            UserModel.ID,
             UserModel.USERNAME,
             UserModel.EMAIL,
             UserModel.FIRST_NAME,
             UserModel.LAST_NAME,
-            UserModel.LOCALE
+            UserModel.EMAIL_VERIFIED,
+            UserModel.ENABLED,
+            UserModel.LOCALE,
+            UserModel.CREATED_TIMESTAMP,
+            UserModel.DISABLED_REASON,
+            UserModel.DID,
+            UserModel.IS_TEMP_ADMIN_ATTR_NAME
     );
 
     /** User attribute name; set in {@link #init(Config.Scope)} and passed to each listener. */
@@ -123,7 +132,7 @@ public class LastLoginTimestampListenerFactory implements EventListenerProviderF
      * @return {@code true} if it matches the allowed pattern and is not a
      *         reserved user attribute
      */
-    private static boolean isValidAttributeName(String name) {
+    static boolean isValidAttributeName(String name) {
         return ATTRIBUTE_NAME_PATTERN.matcher(name).matches()
                 && !RESERVED_ATTRIBUTE_NAMES.contains(name);
     }

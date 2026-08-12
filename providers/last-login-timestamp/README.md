@@ -62,7 +62,7 @@ The user attribute name can be overridden through the SPI configuration:
 --spi-events-listener--last-login-timestamp--attribute-name=myCustomAttribute
 ```
 
-The name must match `^[a-zA-Z][a-zA-Z0-9_]{0,63}$` (start with a letter; letters, digits, and underscores only; max 64 characters) and must not be a reserved user attribute: `username`, `email`, `firstName`, `lastName`, or `locale`. This prevents a misconfiguration from overwriting unrelated user data.
+The name must match `^[a-zA-Z][a-zA-Z0-9_]{0,63}$` (start with a letter; letters, digits, and underscores only; max 64 characters) and must not be a reserved user attribute: `id`, `username`, `email`, `firstName`, `lastName`, `emailVerified`, `enabled`, `locale`, `createdTimestamp`, `disabledReason`, `did`, or `is_temporary_admin`. This prevents a misconfiguration from overwriting unrelated user data.
 
 If unset or blank, the attribute name defaults to `lastLoginTimestamp`. If a non-blank value fails validation, it is rejected with a `WARN` log and `lastLoginTimestamp` is used instead.
 
