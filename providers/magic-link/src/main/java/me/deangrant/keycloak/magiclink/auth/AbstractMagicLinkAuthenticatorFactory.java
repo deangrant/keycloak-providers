@@ -45,7 +45,7 @@ public abstract class AbstractMagicLinkAuthenticatorFactory implements Authentic
 
   @Override
   public final boolean isUserSetupAllowed() {
-    return true;
+    return false;
   }
 
   @Override
