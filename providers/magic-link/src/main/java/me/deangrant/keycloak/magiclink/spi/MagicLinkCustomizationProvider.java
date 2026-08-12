@@ -9,6 +9,11 @@ import org.keycloak.provider.Provider;
 /**
  * Extension point for gating magic-link authentication and customizing email delivery.
  *
+ * <p>Not a Keycloak {@code Spi}: instances are created by a {@link
+ * MagicLinkCustomizationProviderFactory} passed into {@link
+ * me.deangrant.keycloak.magiclink.auth.AbstractMagicLinkAuthenticatorFactory}, not via {@code
+ * ServiceLoader}.
+ *
  * <p>Implement this in a downstream Keycloak extension and wire it through a subclass of {@link
  * me.deangrant.keycloak.magiclink.auth.AbstractMagicLinkAuthenticatorFactory}.
  */

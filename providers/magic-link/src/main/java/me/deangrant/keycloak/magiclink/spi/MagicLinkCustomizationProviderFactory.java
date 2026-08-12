@@ -9,6 +9,10 @@ import org.keycloak.provider.ProviderConfigProperty;
 /**
  * Creates {@link MagicLinkCustomizationProvider} instances and optionally contributes extra admin
  * UI config properties for a magic-link authenticator variant.
+ *
+ * <p>Not a Keycloak {@code Spi} / {@code ProviderFactory}: pass an implementation into {@link
+ * me.deangrant.keycloak.magiclink.auth.AbstractMagicLinkAuthenticatorFactory} rather than
+ * registering it with {@code ServiceLoader}.
  */
 public interface MagicLinkCustomizationProviderFactory {
 

@@ -29,7 +29,7 @@ mvn -B test -Dkeycloak.version=<version>
 | Provider | SPI | Description |
 |----------|-----|-------------|
 | [last-login-timestamp](providers/last-login-timestamp/) | `eventsListener` (`EventListenerProvider`) | On successful `LOGIN`, writes epoch-millis to a user attribute (default `lastLoginTimestamp`) after commit on a background pool—advisory, best-effort, non-blocking for auth |
-| [magic-link](providers/magic-link/) | `authenticator` + `actionTokenHandler` | Browser-flow Magic Link, Magic Link Continuation, and Email OTP; theme-resources email/login templates; customization SPI for library consumers |
+| [magic-link](providers/magic-link/) | `authenticator` + `actionTokenHandler` | Browser-flow Magic Link, Magic Link Continuation, and Email OTP; theme-resources email/login templates; factory-injected customization for library consumers |
 
 Provider-specific install, SPI config, and limitations are documented in each module README.
 

@@ -10,5 +10,5 @@ alwaysApply: true
 - Keep `${keycloak.version}` in the root POM as the single version override point. Do not invent Maven profiles per Keycloak version; use `-Dkeycloak.version=<version>`.
 - For `last-login-timestamp`: listen to `EventType.LOGIN` only unless docs and tests are updated intentionally for a broader contract.
 - Treat last-login attribute writes as advisory, best-effort, and non-blocking for authentication. Preserve WARN-only failure logging on the update path.
-- For `magic-link`: keep browser-flow scope (no REST mint API unless explicitly requested); preserve LOGIN-capable action-token handlers, theme-resources templates, and the customization SPI extension points (`AbstractMagicLinkAuthenticatorFactory` + `MagicLinkCustomizationProvider`).
+- For `magic-link`: keep browser-flow scope (no REST mint API unless explicitly requested); preserve LOGIN-capable action-token handlers, theme-resources templates, and the factory-injected customization extension points (`AbstractMagicLinkAuthenticatorFactory` + `MagicLinkCustomizationProvider`).
 - When changing supported Keycloak versions, keep root POM default, CI matrix, and provider READMEs aligned.

@@ -29,7 +29,8 @@ public abstract class AbstractMagicLinkAuthenticatorFactory implements Authentic
   private final MagicLinkCustomizationProviderFactory customizationProviderFactory;
 
   /**
-   * Creates a factory wired to the given customization SPI implementation.
+   * Creates a factory wired to the given customization factory (constructor injection, not Keycloak
+   * SPI discovery).
    *
    * @param customizationProviderFactory factory used at authentication time; never {@code null}
    */

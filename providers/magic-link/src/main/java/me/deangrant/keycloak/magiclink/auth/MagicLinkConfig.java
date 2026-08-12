@@ -82,7 +82,7 @@ public final class MagicLinkConfig {
   }
 
   /**
-   * Reads config from a raw key/value map (for example customization SPI wiring).
+   * Reads config from a raw key/value map (for example customization wiring).
    *
    * @param raw config map; {@code null} yields empty defaults
    */

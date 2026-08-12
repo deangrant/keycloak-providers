@@ -141,20 +141,27 @@ returns. See the provider README Limitations section for operator detail.
 | Authenticator | `MagicLinkAuthenticator` | Email form → action token email → cross-device login |
 | Continuation | `MagicLinkContinuationAuthenticator` | Original device polls until link confirms session |
 | Email OTP | `EmailOtpAuthenticator` | 6-digit emailed OTP after user identification |
-| Customization SPI | `MagicLinkCustomizationProvider` + `AbstractMagicLinkAuthenticatorFactory` | Library extension points |
-| Registration | `META-INF/services/...AuthenticatorFactory` and `...ActionTokenHandlerFactory` | `ServiceLoader` entries |
+| Customization hooks | `MagicLinkCustomizationProvider` + `AbstractMagicLinkAuthenticatorFactory` | Factory injection for library consumers (not ServiceLoader) |
+| Registration | `META-INF/services/...AuthenticatorFactory` and `...ActionTokenHandlerFactory` | `ServiceLoader` entries for authenticators and token handlers |
 
 ```mermaid
-flowchart LR
-  Browser[BrowserFlow] --> MagicAuth[MagicLink]
-  Browser --> ContAuth[Continuation]
-  Browser --> OtpAuth[EmailOTP]
-  MagicAuth --> TokenHandler[ActionTokenHandler]
-  ContAuth --> Confirm[ConfirmOriginalSession]
+flowchart TB
+  ServiceLoader[ServiceLoader] --> AuthFactories[AuthenticatorFactories]
+  ServiceLoader --> TokenHandlers[ActionTokenHandlerFactories]
+  AuthFactories --> MagicAuth[MagicLink]
+  AuthFactories --> ContAuth[Continuation]
+  AuthFactories --> OtpAuth[EmailOTP]
+  MagicAuth --> CustomFactory[CustomizationFactory]
+  CustomFactory --> EmailSend[MagicLinkEmail]
+  EmailSend --> TokenHandlers
+  ContAuth --> ContEmail[ContinuationEmail]
+  ContEmail --> TokenHandlers
+  TokenHandlers --> Confirm[ConfirmOriginalSession]
+  OtpAuth --> OtpSend[OTPEmail]
 ```
 
 See [providers/magic-link/README.md](../../providers/magic-link/README.md) for
-install, flow setup, templates, and SPI extension.
+install, flow setup, templates, and customization extension.
 
 ## Verification and agent layout
 

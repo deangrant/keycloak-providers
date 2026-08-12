@@ -72,7 +72,7 @@ Override by placing same-named files in a custom theme (email theme for `html/`/
 
 Subject message keys: `magicLinkSubject`, `magicLinkContinuationSubject`, `otpSubject`.
 
-## Library extension (SPI)
+## Library extension (customization)
 
 Depend on this module from another Keycloak extension:
 
@@ -84,12 +84,14 @@ Depend on this module from another Keycloak extension:
 </dependency>
 ```
 
+Customization is **factory injection**, not Keycloak SPI discovery: there is no `Spi` / `ServiceLoader` entry for `MagicLinkCustomizationProvider`. Wire your implementation through an authenticator factory constructor; only that authenticator factory is registered with Keycloak.
+
 1. Implement `MagicLinkCustomizationProvider` (`canAuthenticate`, `sendMagicLinkEmail`).
 2. Implement `MagicLinkCustomizationProviderFactory`.
 3. Subclass `AbstractMagicLinkAuthenticatorFactory`, pass your factory, and use a unique `PROVIDER_ID`.
-4. Register your factory in `META-INF/services/org.keycloak.authentication.AuthenticatorFactory`.
+4. Register your authenticator factory in `META-INF/services/org.keycloak.authentication.AuthenticatorFactory`.
 
-`MagicLinkAuthenticator` and the action-token handlers are `final`. Continuation and Email OTP are self-contained and do not use the customization SPI.
+`MagicLinkAuthenticator` and the action-token handlers are `final`. Continuation and Email OTP are self-contained and do not use the customization hooks.
 
 ## Limitations
 

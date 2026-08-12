@@ -9,7 +9,7 @@ fuller context, see [README.md](README.md).
 - [DeepWiki](https://deepwiki.com/deangrant/keycloak-providers) — indexed project wiki (architecture, providers, build)
 - [README.md](README.md) — repository layout, Keycloak version matrix, build/test/lint
 - [providers/last-login-timestamp/README.md](providers/last-login-timestamp/README.md) — event-listener architecture, limitations, install/config
-- [providers/magic-link/README.md](providers/magic-link/README.md) — magic link / continuation / email OTP authenticators, themes, SPI extension
+- [providers/magic-link/README.md](providers/magic-link/README.md) — magic link / continuation / email OTP authenticators, themes, factory-injected customization
 
 ## Rules
 
