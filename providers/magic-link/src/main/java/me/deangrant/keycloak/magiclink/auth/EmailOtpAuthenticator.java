@@ -173,7 +173,7 @@ public final class EmailOtpAuthenticator implements Authenticator {
           .error(Errors.INVALID_CODE);
       context.failureChallenge(
           AuthenticationFlowError.INVALID_CREDENTIALS,
-          otpForm(context, new FormMessage(Messages.INVALID_ACCESS_CODE)));
+          otpForm(context, new FormMessage(FORM_PARAM_OTP, Messages.INVALID_ACCESS_CODE)));
       return;
     }
 
@@ -190,7 +190,7 @@ public final class EmailOtpAuthenticator implements Authenticator {
           .error(Errors.INVALID_CODE);
       context.failureChallenge(
           AuthenticationFlowError.INVALID_CREDENTIALS,
-          otpForm(context, new FormMessage(Messages.INVALID_ACCESS_CODE)));
+          otpForm(context, new FormMessage(FORM_PARAM_OTP, Messages.INVALID_ACCESS_CODE)));
       return;
     }
 
@@ -210,7 +210,8 @@ public final class EmailOtpAuthenticator implements Authenticator {
           .error(Errors.EXPIRED_CODE);
       context.failureChallenge(
           AuthenticationFlowError.EXPIRED_CODE,
-          otpForm(context, new FormMessage(Messages.EXPIRED_ACTION_TOKEN_NO_SESSION)));
+          otpForm(
+              context, new FormMessage(FORM_PARAM_OTP, Messages.EXPIRED_ACTION_TOKEN_NO_SESSION)));
       return;
     }
 
@@ -239,7 +240,7 @@ public final class EmailOtpAuthenticator implements Authenticator {
         .error(Errors.INVALID_CODE);
     context.failureChallenge(
         AuthenticationFlowError.INVALID_CREDENTIALS,
-        otpForm(context, new FormMessage(Messages.INVALID_ACCESS_CODE)));
+        otpForm(context, new FormMessage(FORM_PARAM_OTP, Messages.INVALID_ACCESS_CODE)));
   }
 
   private void handleResend(AuthenticationFlowContext context) {
@@ -278,7 +279,9 @@ public final class EmailOtpAuthenticator implements Authenticator {
     }
     context.getEvent().user(user).error(bruteForceError);
     context.forceChallenge(
-        otpForm(context, new FormMessage(disabledByBruteForceMessage(bruteForceError))));
+        otpForm(
+            context,
+            new FormMessage(FORM_PARAM_OTP, disabledByBruteForceMessage(bruteForceError))));
     return true;
   }
 
@@ -297,7 +300,7 @@ public final class EmailOtpAuthenticator implements Authenticator {
         .error(Errors.EMAIL_SEND_FAILED);
     context.failureChallenge(
         AuthenticationFlowError.GENERIC_AUTHENTICATION_ERROR,
-        otpForm(context, new FormMessage(Messages.EMAIL_SENT_ERROR)));
+        otpForm(context, new FormMessage(FORM_PARAM_OTP, Messages.EMAIL_SENT_ERROR)));
   }
 
   /**

@@ -34,6 +34,7 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.utils.FormMessage;
 import org.keycloak.services.managers.BruteForceProtector;
+import org.keycloak.services.messages.Messages;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -111,6 +112,11 @@ class EmailOtpAuthenticatorTest {
     authenticator.action(context);
 
     verify(authSession).setAuthNote(EmailOtpAuthenticator.AUTH_NOTE_OTP_ATTEMPTS, "1");
+    ArgumentCaptor<java.util.List<FormMessage>> errors =
+        ArgumentCaptor.forClass(java.util.List.class);
+    verify(forms).setErrors(errors.capture());
+    assertEquals(EmailOtpAuthenticator.FORM_PARAM_OTP, errors.getValue().get(0).getField());
+    assertEquals(Messages.INVALID_ACCESS_CODE, errors.getValue().get(0).getMessage());
     verify(context)
         .failureChallenge(eq(AuthenticationFlowError.INVALID_CREDENTIALS), eq(formResponse));
     verify(context, never()).success();
