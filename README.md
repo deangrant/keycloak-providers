@@ -32,6 +32,17 @@ mvn clean package
 
 Each provider builds to its own JAR under `providers/<name>/target/`.
 
+### Lint
+
+Format sources and run the same checks as CI lint:
+
+```bash
+mvn spotless:apply
+mvn -B verify -DskipTests
+```
+
+`verify -DskipTests` runs Maven Enforcer, compiles with Error Prone, and Spotless check (no Surefire).
+
 ## License
 
 [MIT](LICENSE) © Dean Grant
