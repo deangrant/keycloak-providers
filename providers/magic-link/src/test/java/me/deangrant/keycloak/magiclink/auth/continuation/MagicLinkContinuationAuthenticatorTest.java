@@ -161,6 +161,8 @@ class MagicLinkContinuationAuthenticatorTest {
             ZonedDateTime.now(ZoneOffset.UTC).plusMinutes(5).toString()));
     org.junit.jupiter.api.Assertions.assertFalse(
         MagicLinkContinuationAuthenticator.isExpirationElapsed(null));
+    org.junit.jupiter.api.Assertions.assertTrue(
+        MagicLinkContinuationAuthenticator.isExpirationElapsed("not-a-timestamp"));
   }
 
   @Test

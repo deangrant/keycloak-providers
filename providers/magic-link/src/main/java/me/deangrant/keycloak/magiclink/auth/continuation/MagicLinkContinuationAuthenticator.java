@@ -6,6 +6,7 @@ import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -334,7 +335,11 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
     if (expiration == null || expiration.isBlank()) {
       return false;
     }
-    return ZonedDateTime.parse(expiration).isBefore(ZonedDateTime.now(ZoneOffset.UTC));
+    try {
+      return ZonedDateTime.parse(expiration).isBefore(ZonedDateTime.now(ZoneOffset.UTC));
+    } catch (DateTimeParseException e) {
+      return true;
+    }
   }
 
   private int getTimeoutMinutes(AuthenticationFlowContext context) {
