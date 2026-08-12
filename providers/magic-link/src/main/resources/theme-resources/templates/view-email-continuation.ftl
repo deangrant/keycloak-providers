@@ -11,7 +11,7 @@
       (function () {
         setTimeout(function () {
           document.getElementById("mlc-poll").submit();
-        }, 5000);
+        }, ${pollDelayMs!5000});
       })();
     </script>
   </#if>

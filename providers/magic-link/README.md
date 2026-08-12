@@ -102,6 +102,7 @@ Depend on this module from another Keycloak extension:
 - With `forceCreate`, a user may be created before the email is sent (action tokens need a user id); if the send fails (or customization denies auth), that newly created user is removed and `REGISTER` is emitted only after a successful send.
 - Continuation confirmation depends on the original authentication session still being alive in the cluster.
 - The Continuation click device uses its own authentication session; only the original waiting session is marked confirmed (the click device does not join that session).
+- Continuation waiting-page polls use exponential backoff from 5s up to a 30s cap to limit load from open tabs.
 - Email OTP stores a per-code salt and HMAC-SHA256 digest in the authentication session (not the plaintext code).
 - Email OTP invalidates the current code after too many wrong guesses (`otpMaxAttempts`, default 5); the user must resend for a new code and attempt budget.
 - Email OTP resend is limited by cooldown (`otpResendCooldownSeconds`, default 30) and a per-session send budget (`otpMaxSends`, default 5, including the first email).

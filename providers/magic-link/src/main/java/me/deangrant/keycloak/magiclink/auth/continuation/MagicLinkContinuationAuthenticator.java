@@ -41,6 +41,15 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
 
   public static final int DEFAULT_TIMEOUT_MINUTES = 10;
 
+  /** Initial waiting-page poll delay in milliseconds. */
+  public static final int INITIAL_POLL_DELAY_MS = 5_000;
+
+  /** Maximum waiting-page poll delay in milliseconds. */
+  public static final int MAX_POLL_DELAY_MS = 30_000;
+
+  /** Form attribute for the next client-side poll delay. */
+  public static final String FORM_ATTR_POLL_DELAY_MS = "pollDelayMs";
+
   /** Admin-UI config properties for this authenticator. */
   public static final List<ProviderConfigProperty> CONFIG_PROPERTIES;
 
@@ -99,7 +108,7 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
       return;
     }
 
-    context.challenge(context.form().createForm("view-email-continuation.ftl"));
+    context.challenge(continuationWaitingForm(context));
   }
 
   @Override
@@ -119,7 +128,8 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
     if ("true".equals(formData.getFirst("poll"))
         && context.getAuthenticationSession().getAuthNote(ContinuationNotes.SESSION_INITIATED)
             != null) {
-      context.challenge(context.form().createForm("view-email-continuation.ftl"));
+      bumpPollCount(context);
+      context.challenge(continuationWaitingForm(context));
       return;
     }
 
@@ -158,7 +168,7 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
           .error(Errors.INVALID_EMAIL);
       // Avoid account enumeration: same waiting page and session notes as a successful send.
       beginWaitingSession(context, email);
-      context.forceChallenge(context.form().createForm("view-email-continuation.ftl"));
+      context.forceChallenge(continuationWaitingForm(context));
       return;
     }
 
@@ -168,7 +178,7 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
       }
       // Avoid enumeration / stall: same waiting page as unknown email (no mail).
       beginWaitingSession(context, email);
-      context.forceChallenge(context.form().createForm("view-email-continuation.ftl"));
+      context.forceChallenge(continuationWaitingForm(context));
       return;
     }
 
@@ -214,7 +224,7 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
 
     MagicLinkSupport.rememberLatestActionToken(context.getSession(), token, validitySeconds);
     beginWaitingSession(context, email);
-    context.challenge(context.form().createForm("view-email-continuation.ftl"));
+    context.challenge(continuationWaitingForm(context));
   }
 
   /**
@@ -227,6 +237,7 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
         .getAuthenticationSession()
         .setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, email);
     context.getAuthenticationSession().setAuthNote(ContinuationNotes.SESSION_INITIATED, "true");
+    context.getAuthenticationSession().removeAuthNote(ContinuationNotes.POLL_COUNT);
     context
         .getAuthenticationSession()
         .setAuthNote(
@@ -235,6 +246,45 @@ public final class MagicLinkContinuationAuthenticator extends UsernamePasswordFo
                 .plusMinutes(timeoutMinutes)
                 .plusSeconds(2)
                 .toString());
+  }
+
+  private Response continuationWaitingForm(AuthenticationFlowContext context) {
+    int pollCount = readPollCount(context);
+    return context
+        .form()
+        .setAttribute(FORM_ATTR_POLL_DELAY_MS, pollDelayMs(pollCount))
+        .createForm("view-email-continuation.ftl");
+  }
+
+  private void bumpPollCount(AuthenticationFlowContext context) {
+    int next = readPollCount(context) + 1;
+    context
+        .getAuthenticationSession()
+        .setAuthNote(ContinuationNotes.POLL_COUNT, String.valueOf(next));
+  }
+
+  private int readPollCount(AuthenticationFlowContext context) {
+    String raw = context.getAuthenticationSession().getAuthNote(ContinuationNotes.POLL_COUNT);
+    if (raw == null || raw.isBlank()) {
+      return 0;
+    }
+    try {
+      return Math.max(0, Integer.parseInt(raw.trim()));
+    } catch (NumberFormatException e) {
+      return 0;
+    }
+  }
+
+  /**
+   * Returns the client-side poll delay for the given completed-poll count.
+   *
+   * @param pollCount number of poll POSTs already completed; negative treated as zero
+   * @return delay in milliseconds, capped at {@link #MAX_POLL_DELAY_MS}
+   */
+  static int pollDelayMs(int pollCount) {
+    int count = Math.max(0, pollCount);
+    long delay = (long) INITIAL_POLL_DELAY_MS << Math.min(count, 16);
+    return (int) Math.min(delay, MAX_POLL_DELAY_MS);
   }
 
   private void completeSuccess(AuthenticationFlowContext context) {

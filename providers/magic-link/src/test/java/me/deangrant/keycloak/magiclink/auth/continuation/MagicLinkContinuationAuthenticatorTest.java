@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -17,6 +18,7 @@ import java.time.Duration;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import me.deangrant.keycloak.magiclink.MagicLinkSupport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -180,6 +182,7 @@ class MagicLinkContinuationAuthenticatorTest {
     when(users.getUserByUsername(realm, "missing@example.com")).thenReturn(null);
     when(event.detail(any(), org.mockito.ArgumentMatchers.<String>any())).thenReturn(event);
     when(event.event(any())).thenReturn(event);
+    when(forms.setAttribute(any(), any())).thenReturn(forms);
     when(forms.createForm("view-email-continuation.ftl")).thenReturn(formResponse);
 
     MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
@@ -191,7 +194,12 @@ class MagicLinkContinuationAuthenticatorTest {
     verify(authSession)
         .setAuthNote(AbstractUsernameFormAuthenticator.ATTEMPTED_USERNAME, "missing@example.com");
     verify(authSession).setAuthNote(ContinuationNotes.SESSION_INITIATED, "true");
+    verify(authSession).removeAuthNote(ContinuationNotes.POLL_COUNT);
     verify(authSession).setAuthNote(eq(ContinuationNotes.SESSION_EXPIRATION), any());
+    verify(forms)
+        .setAttribute(
+            MagicLinkContinuationAuthenticator.FORM_ATTR_POLL_DELAY_MS,
+            MagicLinkContinuationAuthenticator.INITIAL_POLL_DELAY_MS);
     verify(forms).createForm("view-email-continuation.ftl");
     verify(forms, never()).createForm("view-email.ftl");
     verify(context).forceChallenge(formResponse);
@@ -223,6 +231,7 @@ class MagicLinkContinuationAuthenticatorTest {
     when(user.isEnabled()).thenReturn(false);
     when(event.detail(any(), org.mockito.ArgumentMatchers.<String>any())).thenReturn(event);
     when(event.event(any())).thenReturn(event);
+    when(forms.setAttribute(any(), any())).thenReturn(forms);
     when(forms.createForm("view-email-continuation.ftl")).thenReturn(formResponse);
     when(forms.setExecution(any())).thenReturn(forms);
     when(forms.setError(any(), any())).thenReturn(forms);
@@ -341,6 +350,7 @@ class MagicLinkContinuationAuthenticatorTest {
     when(event.detail(any(), org.mockito.ArgumentMatchers.<String>any())).thenReturn(event);
     when(event.event(any())).thenReturn(event);
     when(event.user(user)).thenReturn(event);
+    when(forms.setAttribute(any(), any())).thenReturn(forms);
     when(forms.createForm("view-email-continuation.ftl")).thenReturn(formResponse);
 
     MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
@@ -367,6 +377,7 @@ class MagicLinkContinuationAuthenticatorTest {
       support.verify(() -> MagicLinkSupport.rememberLatestActionToken(session, token, 60 * 10));
     }
 
+    verify(authSession).removeAuthNote(ContinuationNotes.POLL_COUNT);
     verify(forms).createForm("view-email-continuation.ftl");
     verify(context).challenge(formResponse);
   }
@@ -392,6 +403,7 @@ class MagicLinkContinuationAuthenticatorTest {
     when(users.getUserByUsername(realm, "missing@example.com")).thenReturn(null);
     when(event.detail(any(), org.mockito.ArgumentMatchers.<String>any())).thenReturn(event);
     when(event.event(any())).thenReturn(event);
+    when(forms.setAttribute(any(), any())).thenReturn(forms);
     when(forms.createForm("view-email-continuation.ftl")).thenReturn(formResponse);
 
     MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
@@ -408,5 +420,57 @@ class MagicLinkContinuationAuthenticatorTest {
     long expectedMin = MagicLinkContinuationAuthenticator.DEFAULT_TIMEOUT_MINUTES * 60L;
     // beginWaitingSession adds plusSeconds(2); allow a few seconds of clock skew.
     assertTrue(seconds >= expectedMin && seconds <= expectedMin + 10);
+  }
+
+  @Test
+  void pollDelayMsUsesExponentialBackoffWithCap() {
+    org.junit.jupiter.api.Assertions.assertEquals(
+        5_000, MagicLinkContinuationAuthenticator.pollDelayMs(0));
+    org.junit.jupiter.api.Assertions.assertEquals(
+        10_000, MagicLinkContinuationAuthenticator.pollDelayMs(1));
+    org.junit.jupiter.api.Assertions.assertEquals(
+        20_000, MagicLinkContinuationAuthenticator.pollDelayMs(2));
+    org.junit.jupiter.api.Assertions.assertEquals(
+        30_000, MagicLinkContinuationAuthenticator.pollDelayMs(3));
+    org.junit.jupiter.api.Assertions.assertEquals(
+        30_000, MagicLinkContinuationAuthenticator.pollDelayMs(10));
+    org.junit.jupiter.api.Assertions.assertEquals(
+        5_000, MagicLinkContinuationAuthenticator.pollDelayMs(-1));
+  }
+
+  @Test
+  void pollIncrementsCountAndUsesBackoffDelay() {
+    MagicLinkContinuationAuthenticator authenticator = new MagicLinkContinuationAuthenticator();
+    AtomicReference<String> pollCount = new AtomicReference<>(null);
+    when(context.getAuthenticationSession()).thenReturn(authSession);
+    when(context.getHttpRequest()).thenReturn(httpRequest);
+    when(context.form()).thenReturn(forms);
+    when(authSession.getAuthNote(ContinuationNotes.SESSION_EXPIRATION)).thenReturn(null);
+    when(authSession.getAuthNote(ContinuationNotes.SESSION_CONFIRMED)).thenReturn(null);
+    when(authSession.getAuthNote(ContinuationNotes.SESSION_INITIATED)).thenReturn("true");
+    when(authSession.getAuthNote(ContinuationNotes.POLL_COUNT))
+        .thenAnswer(invocation -> pollCount.get());
+    doAnswer(
+            invocation -> {
+              pollCount.set(invocation.getArgument(1));
+              return null;
+            })
+        .when(authSession)
+        .setAuthNote(eq(ContinuationNotes.POLL_COUNT), any());
+    when(forms.setAttribute(any(), any())).thenReturn(forms);
+    when(forms.createForm("view-email-continuation.ftl")).thenReturn(formResponse);
+
+    MultivaluedMap<String, String> form = new MultivaluedHashMap<>();
+    form.add("poll", "true");
+    when(httpRequest.getDecodedFormParameters()).thenReturn(form);
+
+    authenticator.action(context);
+
+    verify(authSession).setAuthNote(ContinuationNotes.POLL_COUNT, "1");
+    verify(forms)
+        .setAttribute(
+            MagicLinkContinuationAuthenticator.FORM_ATTR_POLL_DELAY_MS,
+            MagicLinkContinuationAuthenticator.pollDelayMs(1));
+    verify(context).challenge(formResponse);
   }
 }

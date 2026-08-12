@@ -12,5 +12,8 @@ public final class ContinuationNotes {
   /** ISO-8601 expiry instant for the original device's waiting session. */
   public static final String SESSION_EXPIRATION = "magic-link-continuation-expiration";
 
+  /** Count of completed poll POSTs; drives exponential waiting-page delay. */
+  public static final String POLL_COUNT = "magic-link-continuation-poll-count";
+
   private ContinuationNotes() {}
 }
