@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
+import org.keycloak.events.Event;
 
 class LastLoginTimestampListenerTest {
 
@@ -54,5 +55,16 @@ class LastLoginTimestampListenerTest {
         assertEquals(256, LastLoginTimestampListener.lockStripeCount());
         assertNotNull(LastLoginTimestampListener.userLock("realm-a", "user-1"));
         assertNotNull(LastLoginTimestampListener.userLock("realm-b", "user-2"));
+    }
+
+    @Test
+    void formatEventWithErrorToleratesNullEventFields() {
+        Event event = new Event();
+        String message = LastLoginTimestampListener.formatEventWithError(
+                event, new RuntimeException("boom"), "lastLoginTimestamp");
+        assertNotNull(message);
+        assertFalse(message.isBlank());
+        assertTrue(message.contains("error="));
+        assertTrue(message.contains("RuntimeException"));
     }
 }

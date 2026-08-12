@@ -135,7 +135,24 @@ public class LastLoginTimestampListener implements EventListenerProvider {
                 });
             }
         } catch (Exception e) {
-            LOG.warn(formatEventWithError(event, e), e);
+            logUpdateFailure(event, e);
+        }
+    }
+
+    /**
+     * Logs an attribute-update failure without letting secondary logging
+     * exceptions escape.
+     *
+     * @param event the original login event
+     * @param cause the failure that triggered logging
+     */
+    private void logUpdateFailure(Event event, Exception cause) {
+        try {
+            LOG.warn(formatEventWithError(event, cause, attributeName), cause);
+        } catch (Exception loggingFailure) {
+            LOG.warnf(cause, "failed to update %s attribute (%s); also failed to format failure log (%s)",
+                    attributeName, cause.getClass().getSimpleName(),
+                    loggingFailure.getClass().getSimpleName());
         }
     }
 
@@ -214,15 +231,17 @@ public class LastLoginTimestampListener implements EventListenerProvider {
      * appended.
      *
      * Includes standard event fields and allowlisted non-sensitive details only.
-     * Does not include {@code sessionId} or {@code ipAddress}.
+     * Does not include {@code sessionId} or {@code ipAddress}. Null event fields
+     * are tolerated so formatting itself does not throw.
      *
-     * @param event the original login event
-     * @param e     the exception that caused the attribute update to fail
+     * @param event          the original login event
+     * @param e              the exception that caused the attribute update to fail
+     * @param attributeName  the configured user attribute name
      * @return a comma-separated {@code key="value"} log message
      */
-    private String formatEventWithError(Event event, Exception e) {
+    static String formatEventWithError(Event event, Exception e, String attributeName) {
         StringBuilder sb = new StringBuilder();
-        appendField(sb, "type", event.getType().toString());
+        appendField(sb, "type", event.getType() == null ? null : event.getType().toString());
         appendField(sb, "realmId", event.getRealmId());
         appendField(sb, "realmName", event.getRealmName());
         appendField(sb, "clientId", event.getClientId());
@@ -249,7 +268,7 @@ public class LastLoginTimestampListener implements EventListenerProvider {
      * @param key   the field name
      * @param value the field value (may be {@code null})
      */
-    private void appendField(StringBuilder sb, String key, String value) {
+    private static void appendField(StringBuilder sb, String key, String value) {
         if (sb.length() > 0) {
             sb.append(", ");
         }
@@ -282,7 +301,7 @@ public class LastLoginTimestampListener implements EventListenerProvider {
                 try {
                     executor.execute(() -> updateLastLoginTimestamp(event));
                 } catch (RejectedExecutionException e) {
-                    LOG.warn(formatEventWithError(event, e), e);
+                    logUpdateFailure(event, e);
                 }
             }
         }
