@@ -1,0 +1,2 @@
+me.deangrant.keycloak.magiclink.auth.MagicLinkActionTokenHandlerFactory
+me.deangrant.keycloak.magiclink.auth.continuation.MagicLinkContinuationActionTokenHandlerFactory

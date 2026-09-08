@@ -8,4 +8,5 @@ alwaysApply: false
 
 - Root `README.md` and each provider README must list the same supported Keycloak versions as `.github/workflows/test.yml` matrix and the root POM `keycloak.version` default.
 - When documenting listener behavior, keep Limitations and Overview aligned with code: LOGIN-only, async after-commit, best-effort WARN failures, advisory (non-audit) semantics.
+- When documenting magic-link authenticators, keep Limitations and Overview aligned with code: browser-flow only (no REST mint API unless added intentionally), single-use tokens, theme-resources templates, and factory-injected customization extension points.
 - Do not claim support for Keycloak versions outside the CI matrix unless those versions are added to the matrix and docs together.
