@@ -11,8 +11,8 @@ The attribute is an **advisory** operational signal—not a canonical audit trai
 | Listener | `me.deangrant.keycloak.events.LastLoginTimestampListener` |
 | Registration | `META-INF/services/org.keycloak.events.EventListenerProviderFactory` |
 | Default attribute | `lastLoginTimestamp` (stringified epoch millis) |
-| Compile target | Keycloak `26.7.1` (`keycloak.version` in the root POM) |
-| CI-tested | `26.7.1`, `26.6.4` (see root [README](../../README.md)) |
+| Compile target | Keycloak `26.8.0` (`keycloak.version` in the root POM) |
+| CI-tested | `26.8.0`, `26.7.4`, `26.7.3`, `26.7.2`, `26.7.1`, `26.7.0`, `26.6.4` (see root [README](../../README.md)) |
 | Java | `21` |
 
 Keycloak SPI artifacts are Maven scope **`provided`**. Override the compile/test Keycloak version from the repo root with `-Dkeycloak.version=<version>`.

@@ -20,6 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         keycloak-version:
+          - "26.8.0"
           - "26.7.4"
           - "26.7.3"
           - "26.7.2"

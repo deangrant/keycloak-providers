@@ -41,7 +41,7 @@ class LastLoginTimestampListenerFactoryTest {
         UserModel.LOCALE,
         UserModel.CREATED_TIMESTAMP,
         UserModel.DISABLED_REASON,
-        UserModel.DID,
+        "did",
         UserModel.IS_TEMP_ADMIN_ATTR_NAME
       })
   void reservedNamesAreRejected(String reserved) {
