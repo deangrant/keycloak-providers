@@ -73,7 +73,7 @@ public class LastLoginTimestampListenerFactory implements EventListenerProviderF
           UserModel.LOCALE,
           UserModel.CREATED_TIMESTAMP,
           UserModel.DISABLED_REASON,
-          UserModel.DID,
+          "did",
           UserModel.IS_TEMP_ADMIN_ATTR_NAME);
 
   /** User attribute name; set in {@link #init(Config.Scope)} and passed to each listener. */
