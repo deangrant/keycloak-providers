@@ -11,10 +11,11 @@ Providers compile against Keycloak server SPI artifacts (`keycloak-server-spi`, 
 
 ## Supported Keycloak versions
 
-Default compile target: **26.8.0** (`keycloak.version` in the root POM).
+Default compile target: **26.8.1** (`keycloak.version` in the root POM).
 
 CI recompiles and runs the **unit** suite (JUnit 5 + Mockito; no Testcontainers / Failsafe ITs) against:
 
+- `26.8.1`
 - `26.8.0`
 - `26.7.4`
 - `26.7.3`
